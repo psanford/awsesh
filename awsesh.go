@@ -17,13 +17,19 @@ var rootCmd = &cobra.Command{
 	Short: "AWS Session Helpers",
 }
 
+var conf Config
+
 func main() {
+	conf = loadConfig()
+
 	if os.Getenv("AWS_DEFAULT_REGION") != "" {
 		region = os.Getenv("AWS_DEFAULT_REGION")
 	}
 
 	rootCmd.AddCommand(u2fRegisterCommand())
-	rootCmd.AddCommand(u2fVerifyCommand())
+	rootCmd.AddCommand(debugCommand())
+	rootCmd.AddCommand(loginCommand())
+	rootCmd.AddCommand(assumeRoleCommand())
 	rootCmd.AddCommand(serverCommand())
 	rootCmd.AddCommand(sessionCommand())
 
@@ -42,6 +48,11 @@ func serverCommand() *cobra.Command {
 }
 
 func serverAction(cmd *cobra.Command, args []string) {
+	s := newServer()
+	err := s.listenAndServe()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 }
 
@@ -62,20 +73,54 @@ func u2fRegisterAction(cmd *cobra.Command, args []string) {
 	fmt.Printf("key-handle: %s\n", handle.MarshalKey())
 }
 
-func u2fVerifyCommand() *cobra.Command {
+func loginCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "u2f-verify",
-		Short: "verify a u2f device",
-		Run:   u2fVerifyAction,
+		Use:   "login",
+		Short: "login command",
+		Run:   loginAction,
 	}
 }
 
-func u2fVerifyAction(cmd *cobra.Command, args []string) {
-	err := verifyDevice()
+func loginAction(cmd *cobra.Command, args []string) {
+	client := NewClient()
+
+	err := client.Ping()
+	if err != nil {
+		log.Fatalf("Server communication error: %s", err)
+	}
+
+	log.Printf("Prepare to tap yubikey...")
+
+	err = client.Login()
+	if err != nil {
+		log.Fatalf("Login error: %s", err)
+	}
+
+	log.Println("ok")
+}
+
+func assumeRoleCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "assume",
+		Short: "assume role",
+		Run:   assumeRoleAction,
+	}
+}
+
+func assumeRoleAction(cmd *cobra.Command, args []string) {
+	if len(args) != 2 {
+		log.Fatalf("usage: assume <account_id> <role_name")
+	}
+
+	client := NewClient()
+	err := client.Ping()
+	if err != nil {
+		log.Fatalf("Server communication error: %s", err)
+	}
+	err = client.AssumeRole(args[0], args[1])
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("ok!\n")
 }
 
 func sessionCommand() *cobra.Command {

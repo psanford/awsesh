@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -85,9 +86,7 @@ func registerDevice() (*RegisterResponse, error) {
 	return parsed, nil
 }
 
-func verifyDevice() error {
-	conf := loadConfig()
-
+func verifyDevice(ctx context.Context) error {
 	var rr RegisterResponse
 	err := rr.Unmarshal(conf.KeyHandle)
 	if err != nil {
@@ -106,16 +105,23 @@ func verifyDevice() error {
 		return err
 	}
 
+	done := ctx.Done()
+
 	io.ReadFull(rand.Reader, challenge)
 	log.Println("authenticating, tap key to continue")
 	var res *u2ftoken.AuthenticateResponse
 	for {
 		res, err = t.Authenticate(req)
 		if err == u2ftoken.ErrPresenceRequired {
+			select {
+			case <-done:
+				return errors.New("auth canceled")
+			default:
+			}
 			time.Sleep(200 * time.Millisecond)
 			continue
 		} else if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		break
 	}

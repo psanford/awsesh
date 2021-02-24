@@ -11,6 +11,14 @@ import (
 
 type Config struct {
 	KeyHandle string `toml:"key-handle"`
+	OP        struct {
+		Subdomain string `toml:"subdomain"`
+		Vault     string `toml:"vault"`
+		Key       string `toml:"key"`
+	} `toml:"op"`
+	AWS struct {
+		MFASerial string `toml:"mfa-serial"`
+	} `toml:"aws"`
 }
 
 func confDir() string {

@@ -44,6 +44,8 @@ github.com/flynn/hid v0.0.0-20190502022136-f1b9b6cc019a h1:fsyWnwbywFpHJS4T55vDW
 github.com/flynn/hid v0.0.0-20190502022136-f1b9b6cc019a/go.mod h1:Osz+xPHFsGWK9kZCEVcwXazcF/CHjscCVZosNFgwUIY=
 github.com/flynn/u2f v0.0.0-20180613185708-15554eb68e5d h1:2D6Rp/MRcrKnRFr7kfgBOJnJPFN0jPfc36ggct5MaK0=
 github.com/flynn/u2f v0.0.0-20180613185708-15554eb68e5d/go.mod h1:shcCQPgKtaJz4obqb6Si031WgtSrW+Tj+ZLq/mRNrM8=
+github.com/foxcpp/go-assuan v1.0.0 h1:KDSEmEGdHOzOjKmFUoaX/FGk1NxG/mHNAIdyksM8e4A=
+github.com/foxcpp/go-assuan v1.0.0/go.mod h1:dQEJ9EaSSrUjd/g2PVaVEuV0TaoMDGwoh9XIDH1Q/Sc=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=
 github.com/go-gl/glfw v0.0.0-20190409004039-e6da0acd62b1/go.mod h1:vR7hzQXu2zJy9AVAgeJqvqgH9Q5CA+iKCZ2gyEVpxRU=
