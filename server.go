@@ -178,7 +178,7 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "  export AWS_ACCESS_KEY_ID=%s\n", *s.creds.AccessKeyId)
 	fmt.Fprintf(w, "  export AWS_SECRET_ACCESS_KEY=%s\n", *s.creds.SecretAccessKey)
 	fmt.Fprintf(w, "  export AWS_SESSION_TOKEN=%s\n", *s.creds.SessionToken)
-	fmt.Fprintf(w, "  export PS1=\"(awsesh-sess)\"  \\[\\033[01;35m\\]\\w\[\\033[00m\\]\\$ \n")
+	fmt.Fprintf(w, "  export PS1=\"(awsesh-sess)\"  \\[\\033[01;35m\\]\\w\\[\\033[00m\\]\\$ \n")
 }
 
 func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
@@ -236,7 +236,7 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "  export AWS_ACCESS_KEY_ID=%s\n", *out.Credentials.AccessKeyId)
 	fmt.Fprintf(w, "  export AWS_SECRET_ACCESS_KEY=%s\n", *out.Credentials.SecretAccessKey)
 	fmt.Fprintf(w, "  export AWS_SESSION_TOKEN=%s\n", *out.Credentials.SessionToken)
-	fmt.Fprintf(w, "  export PS1=\"(awsesh-%s)\"  \\[\\033[01;35m\\]\\w\[\\033[00m\\]\\$ \n", accountName)
+	fmt.Fprintf(w, "  export PS1=\"(awsesh-%s)\"  \\[\\033[01;35m\\]\\w\\[\\033[00m\\]\\$ \n", accountName)
 }
 
 func awsTOTP(ctx context.Context) (string, error) {
