@@ -33,6 +33,7 @@ func main() {
 
 	rootCmd.AddCommand(u2fRegisterCommand())
 	rootCmd.AddCommand(debugCommand())
+	rootCmd.AddCommand(listAccountsCommand())
 	rootCmd.AddCommand(loginCommand())
 	rootCmd.AddCommand(assumeRoleCommand())
 	rootCmd.AddCommand(serverCommand())
@@ -177,6 +178,7 @@ func startEnvOrPrint(creds *sts.Credentials, name string) {
 		fmt.Printf("  export AWS_ACCESS_KEY_ID=%s\n", *creds.AccessKeyId)
 		fmt.Printf("  export AWS_SECRET_ACCESS_KEY=%s\n", *creds.SecretAccessKey)
 		fmt.Printf("  export AWS_SESSION_TOKEN=%s\n", *creds.SessionToken)
+		fmt.Printf("  export AWSESH_PROFILE=\"%s\"", name)
 		fmt.Printf(`  export PS1="(awsesh-%s)  \\[\\033[01;35m\\]\\w\\[\\033[00m\\]\\$ "`, name)
 		fmt.Println()
 	} else {
@@ -277,6 +279,20 @@ func mommySession() *awssession.Session {
 	}
 
 	return sess
+}
+
+func listAccountsCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list-accounts",
+		Short: "list-accounts",
+		Run:   listAccountsAction,
+	}
+}
+
+func listAccountsAction(cmd *cobra.Command, args []string) {
+	for _, acct := range validAccounts() {
+		fmt.Println(acct.String())
+	}
 }
 
 type environ []string
