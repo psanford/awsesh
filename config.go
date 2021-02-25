@@ -35,7 +35,6 @@ func socketPath() string {
 
 func loadConfig() Config {
 	confPath := filepath.Join(confDir(), "config.toml")
-	fmt.Printf("path: %s\n", confPath)
 	tml, err := ioutil.ReadFile(confPath)
 	if err != nil {
 		panic(err)

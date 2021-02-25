@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/aws/aws-sdk-go/service/sts"
 )
 
 type Client struct {
@@ -84,40 +87,50 @@ func (c *Client) Login() error {
 	return nil
 }
 
-func (c *Client) AssumeRole(accountID, roleName, accountName string) error {
+func (c *Client) AssumeRole(accountID, roleName, accountName string) (*sts.Credentials, error) {
 	data := make(url.Values)
 	data.Set("account_id", accountID)
 	data.Set("role_name", roleName)
 	data.Set("account_name", accountName)
 	resp, err := c.httpClient.PostForm(fakeHost+"/assume_role", data)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("Bad response from server: %d\n%s\n", resp.StatusCode, body)
+		return nil, fmt.Errorf("Bad response from server: %d body=<%s>", resp.StatusCode, body)
 	}
 
-	fmt.Println(string(body))
-	return nil
+	var creds sts.Credentials
+	err = json.Unmarshal(body, &creds)
+	if err != nil {
+		return nil, fmt.Errorf("Unmarshal json resp err: %s, body: <%s>", err, body)
+	}
+
+	return &creds, nil
 }
 
-func (c *Client) Session() error {
+func (c *Client) Session() (*sts.Credentials, error) {
 	resp, err := c.httpClient.PostForm(fakeHost+"/session", nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("Bad response from server: %d\n%s\n", resp.StatusCode, body)
+		return nil, fmt.Errorf("Bad response from server: %d\n%s\n", resp.StatusCode, body)
 	}
 
-	fmt.Println(string(body))
-	return nil
+	var creds sts.Credentials
+	err = json.Unmarshal(body, &creds)
+	if err != nil {
+		return nil, fmt.Errorf("Unmarshal json resp err: %s, body: <%s>", err, body)
+	}
+
+	return &creds, nil
 }

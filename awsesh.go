@@ -4,9 +4,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
+	"os/signal"
+	"strings"
+	"syscall"
 
 	"github.com/aws/aws-sdk-go/aws"
 	awssession "github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/spf13/cobra"
 )
 
@@ -89,8 +94,6 @@ func loginAction(cmd *cobra.Command, args []string) {
 		log.Fatalf("Server communication error: %s", err)
 	}
 
-	log.Printf("Prepare to tap yubikey...")
-
 	err = client.Login()
 	if err != nil {
 		log.Fatalf("Login error: %s", err)
@@ -99,12 +102,26 @@ func loginAction(cmd *cobra.Command, args []string) {
 	log.Println("ok")
 }
 
+var (
+	accountIDF   string
+	roleNameF    string
+	accountNameF string
+	printEnv     bool
+)
+
 func assumeRoleCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "assume",
 		Short: "assume role",
 		Run:   assumeRoleAction,
 	}
+
+	cmd.Flags().StringVarP(&accountIDF, "account-id", "", "", "Account ID")
+	cmd.Flags().StringVarP(&roleNameF, "role", "", "", "Role Name")
+	cmd.Flags().StringVarP(&accountNameF, "name", "", "", "Account Name (friendly)")
+	cmd.Flags().BoolVarP(&printEnv, "print", "", false, "Print ENV settings")
+
+	return cmd
 }
 
 func assumeRoleAction(cmd *cobra.Command, args []string) {
@@ -129,18 +146,81 @@ func assumeRoleAction(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
 	}
-	err = client.AssumeRole(accountID, roleName, accountName)
+	creds, err := client.AssumeRole(accountID, roleName, accountName)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if accountName == "" {
+		accountName = fmt.Sprintf("%s-%s", accountID, roleName)
+	}
+
+	startEnvOrPrint(creds, accountName)
+}
+func startEnvOrPrint(creds *sts.Credentials, name string) {
+	if printEnv {
+		fmt.Printf("  export AWS_ACCESS_KEY_ID=%s\n", *creds.AccessKeyId)
+		fmt.Printf("  export AWS_SECRET_ACCESS_KEY=%s\n", *creds.SecretAccessKey)
+		fmt.Printf("  export AWS_SESSION_TOKEN=%s\n", *creds.SessionToken)
+		fmt.Printf(`  export PS1="(awsesh-%s)  \\[\\033[01;35m\\]\\w\\[\\033[00m\\]\\$ "`, name)
+		fmt.Println()
+	} else {
+		env := environ(os.Environ())
+		env.Set("AWS_ACCESS_KEY_ID", *creds.AccessKeyId)
+		env.Set("AWS_SECRET_ACCESS_KEY", *creds.SecretAccessKey)
+		env.Set("AWS_SESSION_TOKEN", *creds.SessionToken)
+		env.Set("AWSESH_PROFILE", name)
+
+		cmd := exec.Command("/bin/bash")
+		cmd.Env = env
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		sigs := make(chan os.Signal, 1)
+
+		signal.Notify(sigs, os.Interrupt, os.Kill)
+
+		if err := cmd.Start(); err != nil {
+			log.Fatal(err)
+		}
+
+		waitCh := make(chan error, 1)
+		go func() {
+			waitCh <- cmd.Wait()
+			close(waitCh)
+		}()
+
+		for {
+			select {
+			case sig := <-sigs:
+				if err := cmd.Process.Signal(sig); err != nil {
+					log.Fatal(err)
+					break
+				}
+			case err := <-waitCh:
+				var waitStatus syscall.WaitStatus
+				if exitError, ok := err.(*exec.ExitError); ok {
+					waitStatus = exitError.Sys().(syscall.WaitStatus)
+					os.Exit(waitStatus.ExitStatus())
+				}
+				if err != nil {
+					log.Fatal(err)
+				}
+				return
+			}
+		}
 	}
 }
 
 func sessionCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "session",
 		Short: "create a session",
 		Run:   sessionAction,
 	}
+	cmd.Flags().BoolVarP(&printEnv, "print", "", false, "Print ENV settings")
+	return cmd
 }
 
 func sessionAction(cmd *cobra.Command, args []string) {
@@ -149,11 +229,12 @@ func sessionAction(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
 	}
-	err = client.Session()
+	creds, err := client.Session()
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	startEnvOrPrint(creds, "mommy-session")
 }
 
 func mommySession() *awssession.Session {
@@ -163,4 +244,21 @@ func mommySession() *awssession.Session {
 	}
 
 	return sess
+}
+
+type environ []string
+
+func (e *environ) Unset(key string) {
+	for i := range *e {
+		if strings.HasPrefix((*e)[i], key+"=") {
+			(*e)[i] = (*e)[len(*e)-1]
+			*e = (*e)[:len(*e)-1]
+			break
+		}
+	}
+}
+
+func (e *environ) Set(key, val string) {
+	e.Unset(key)
+	*e = append(*e, key+"="+val)
 }
