@@ -84,11 +84,29 @@ func (c *Client) Login() error {
 	return nil
 }
 
-func (c *Client) AssumeRole(accountID, roleName string) error {
+func (c *Client) AssumeRole(accountID, roleName, accountName string) error {
 	data := make(url.Values)
 	data.Set("account_id", accountID)
 	data.Set("role_name", roleName)
+	data.Set("account_name", accountName)
 	resp, err := c.httpClient.PostForm(fakeHost+"/assume_role", data)
+	if err != nil {
+		return err
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("Bad response from server: %d\n%s\n", resp.StatusCode, body)
+	}
+
+	fmt.Println(string(body))
+	return nil
+}
+
+func (c *Client) Session() error {
+	resp, err := c.httpClient.PostForm(fakeHost+"/session", nil)
 	if err != nil {
 		return err
 	}

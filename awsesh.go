@@ -108,8 +108,20 @@ func assumeRoleCommand() *cobra.Command {
 }
 
 func assumeRoleAction(cmd *cobra.Command, args []string) {
-	if len(args) != 2 {
-		log.Fatalf("usage: assume <account_id> <role_name")
+	if len(args) < 2 {
+		log.Fatalf("usage: assume <account_id> <role_name> [account-name]")
+	}
+	var (
+		accountID   string
+		roleName    string
+		accountName string
+	)
+
+	accountID = args[0]
+	roleName = args[1]
+
+	if len(args) > 2 {
+		accountName = args[2]
 	}
 
 	client := NewClient()
@@ -117,7 +129,7 @@ func assumeRoleAction(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
 	}
-	err = client.AssumeRole(args[0], args[1])
+	err = client.AssumeRole(accountID, roleName, accountName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -132,6 +144,15 @@ func sessionCommand() *cobra.Command {
 }
 
 func sessionAction(cmd *cobra.Command, args []string) {
+	client := NewClient()
+	err := client.Ping()
+	if err != nil {
+		log.Fatalf("Server communication error: %s", err)
+	}
+	err = client.Session()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 }
 

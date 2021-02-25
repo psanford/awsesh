@@ -51,6 +51,7 @@ func newServer() *server {
 	mux.HandleFunc("/ping", s.handlePing)
 	mux.HandleFunc("/login", s.handleLogin)
 	mux.HandleFunc("/assume_role", s.handleAssumeRole)
+	mux.HandleFunc("/session", s.handleSession)
 
 	s.handler = mux
 
@@ -155,6 +156,29 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
+	if s.creds == nil {
+		w.WriteHeader(400)
+		fmt.Fprintf(w, "No creds available")
+		return
+	}
+
+	err := s.confirmUserPresence(r.Context())
+	if err != nil {
+		w.WriteHeader(400)
+		fmt.Fprintf(w, err.Error())
+		return
+	}
+
+	if s.creds.Expiration.Before(time.Now()) {
+		w.WriteHeader(400)
+		fmt.Fprintf(w, "creds expired: %s", s.creds.Expiration)
+		return
+	}
+
+	fmt.Fprintf(w, "  export AWS_ACCESS_KEY_ID=%s\n", *s.creds.AccessKeyId)
+	fmt.Fprintf(w, "  export AWS_SECRET_ACCESS_KEY=%s\n", *s.creds.SecretAccessKey)
+	fmt.Fprintf(w, "  export AWS_SESSION_TOKEN=%s\n", *s.creds.SessionToken)
+	fmt.Fprintf(w, "  export PS1=\"(awsesh-sess)\"  \\[\\033[01;35m\\]\\w\[\\033[00m\\]\\$ \n")
 }
 
 func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
@@ -190,6 +214,10 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 
 	roleName := r.Form.Get("role_name")
 	accountID := r.Form.Get("account_id")
+	accountName := r.Form.Get("accountName")
+	if accountName == "" {
+		accountName = "role"
+	}
 
 	roleARN := fmt.Sprintf("arn:aws:iam::%s:role/%s", accountID, roleName)
 
@@ -208,6 +236,7 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "  export AWS_ACCESS_KEY_ID=%s\n", *out.Credentials.AccessKeyId)
 	fmt.Fprintf(w, "  export AWS_SECRET_ACCESS_KEY=%s\n", *out.Credentials.SecretAccessKey)
 	fmt.Fprintf(w, "  export AWS_SESSION_TOKEN=%s\n", *out.Credentials.SessionToken)
+	fmt.Fprintf(w, "  export PS1=\"(awsesh-%s)\"  \\[\\033[01;35m\\]\\w\[\\033[00m\\]\\$ \n", accountName)
 }
 
 func awsTOTP(ctx context.Context) (string, error) {
