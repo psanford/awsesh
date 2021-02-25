@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -50,4 +53,49 @@ func loadConfig() Config {
 	}
 
 	return conf
+}
+
+type account struct {
+	env  string
+	id   string
+	role string
+	name string
+}
+
+func (a account) String() string {
+	return fmt.Sprintf("%s-%s-%s", a.env, a.name, a.id)
+}
+
+func validAccounts() []account {
+	path := filepath.Join(confDir(), "accounts")
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	var out []account
+
+	r := bufio.NewReader(f)
+	for {
+		line, err := r.ReadString('\n')
+		if err != nil {
+			break
+		}
+
+		line = strings.TrimSpace(line)
+
+		parts := strings.SplitN(line, " ", 4)
+		if len(parts) < 3 {
+			continue
+		}
+		out = append(out, account{
+			env:  parts[0],
+			id:   parts[1],
+			role: parts[2],
+			name: parts[3],
+		})
+	}
+	return out
 }

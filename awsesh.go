@@ -37,6 +37,7 @@ func main() {
 	rootCmd.AddCommand(assumeRoleCommand())
 	rootCmd.AddCommand(serverCommand())
 	rootCmd.AddCommand(sessionCommand())
+	rootCmd.AddCommand(completionCommand())
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -121,24 +122,38 @@ func assumeRoleCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&accountNameF, "name", "", "", "Account Name (friendly)")
 	cmd.Flags().BoolVarP(&printEnv, "print", "", false, "Print ENV settings")
 
+	cmd.ValidArgsFunction = assumeRoleCompletions
+
 	return cmd
 }
 
 func assumeRoleAction(cmd *cobra.Command, args []string) {
-	if len(args) < 2 {
-		log.Fatalf("usage: assume <account_id> <role_name> [account-name]")
-	}
 	var (
 		accountID   string
 		roleName    string
 		accountName string
 	)
 
-	accountID = args[0]
-	roleName = args[1]
+	if accountIDF != "" && roleNameF != "" {
+		accountID = accountIDF
+		roleName = roleNameF
+		accountName = accountNameF
+	} else if len(args) == 1 {
+		given := args[0]
+		for _, acct := range validAccounts() {
+			if given == acct.String() || given == acct.id {
+				accountID = acct.id
+				accountName = acct.env + "-" + acct.name
+				roleName = acct.role
+				break
+			}
+		}
+	} else {
+		log.Fatalf("usage: assume <account_id|long-account-id> [--account-id <id>, --role <role>, --name <friendly-name>]")
+	}
 
-	if len(args) > 2 {
-		accountName = args[2]
+	if accountID == "" || roleName == "" {
+		log.Fatalf("Invalid account")
 	}
 
 	client := NewClient()
@@ -213,13 +228,31 @@ func startEnvOrPrint(creds *sts.Credentials, name string) {
 	}
 }
 
+func assumeRoleCompletions(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	accounts := validAccounts()
+
+	var completions []string
+	for _, account := range accounts {
+		if strings.HasPrefix(account.String(), toComplete) {
+			completions = append(completions, account.String())
+		}
+		if strings.HasPrefix(account.id, toComplete) {
+			completions = append(completions, account.id)
+		}
+	}
+
+	return completions, cobra.ShellCompDirectiveNoFileComp
+}
+
 func sessionCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "session",
 		Short: "create a session",
 		Run:   sessionAction,
 	}
+
 	cmd.Flags().BoolVarP(&printEnv, "print", "", false, "Print ENV settings")
+
 	return cmd
 }
 
@@ -261,4 +294,25 @@ func (e *environ) Unset(key string) {
 func (e *environ) Set(key, val string) {
 	e.Unset(key)
 	*e = append(*e, key+"="+val)
+}
+
+func completionCommand() *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   "completion",
+		Short: "Generates bash completion scripts",
+		Long: `To load completion run
+
+. <(awsesh completion)
+
+To configure your bash shell to load completions for each session add to your bashrc
+
+# ~/.bashrc or ~/.profile
+. <(awsesh completion)
+`,
+		Run: func(cmd *cobra.Command, args []string) {
+			rootCmd.GenBashCompletion(os.Stdout)
+		},
+	}
+
+	return cmd
 }
