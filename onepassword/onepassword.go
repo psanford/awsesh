@@ -55,11 +55,9 @@ func (op *onepass) login() error {
 		panic(err)
 	}
 
-	fmt.Println("write")
 	stdin.Write([]byte(passwd))
 	stdin.Close()
 
-	fmt.Println("wait")
 	err = cmd.Wait()
 	if err != nil {
 		return fmt.Errorf("failed to login to 1password: %s", stderr.Bytes())

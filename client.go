@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -113,8 +114,13 @@ func (c *Client) AssumeRole(accountID, roleName, accountName string) (*sts.Crede
 	return &creds, nil
 }
 
-func (c *Client) Session() (*sts.Credentials, error) {
-	resp, err := c.httpClient.PostForm(fakeHost+"/session", nil)
+func (c *Client) Session(timeoutSeconds int) (*sts.Credentials, error) {
+	data := make(url.Values)
+	if timeoutSeconds > 0 {
+		data.Set("timeout_seconds", strconv.Itoa(timeoutSeconds))
+	}
+
+	resp, err := c.httpClient.PostForm(fakeHost+"/session", data)
 	if err != nil {
 		return nil, err
 	}

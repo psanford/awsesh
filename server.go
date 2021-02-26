@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -116,10 +117,8 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var passProvider passprovider.Provider
 
 	if provider.Type == "op" {
-		fmt.Println("op provider!")
 		passProvider = onepassword.New(provider.OP.Subdomain, provider.OP.Vault, provider.OP.Key)
 	} else if provider.Type == "pass" {
-		fmt.Println("pass provider!")
 		passProvider = pass.New(provider.Pass.Path)
 	} else {
 		log.Printf("Bad provider type: %s", provider.Type)
@@ -131,7 +130,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	creds, err := passProvider.AWSCreds()
 	if err != nil {
 		w.WriteHeader(400)
-		fmt.Fprintf(w, "1password getAWSCreds error: %s", err)
+		fmt.Fprintf(w, "Get AWSCreds error: %s", err)
 		return
 	}
 
@@ -177,20 +176,78 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.confirmUserPresence(r.Context())
+	r.ParseForm()
+	timeoutSeconds := 60 * 30
+	timeoutSecsStr := r.FormValue("timeout_seconds")
+	if timeoutSecsStr != "" {
+		i, _ := strconv.Atoi(timeoutSecsStr)
+		if i > 0 {
+			timeoutSeconds = i
+		}
+	}
+
+	ctx := r.Context()
+
+	err := s.confirmUserPresence(ctx)
 	if err != nil {
 		w.WriteHeader(400)
 		fmt.Fprintf(w, err.Error())
 		return
 	}
 
-	if s.creds.Expiration.Before(time.Now()) {
+	provider := conf.Provider[0]
+
+	var passProvider passprovider.Provider
+
+	if provider.Type == "op" {
+		passProvider = onepassword.New(provider.OP.Subdomain, provider.OP.Vault, provider.OP.Key)
+	} else if provider.Type == "pass" {
+		passProvider = pass.New(provider.Pass.Path)
+	} else {
+		log.Printf("Bad provider type: %s", provider.Type)
 		w.WriteHeader(400)
-		fmt.Fprintf(w, "creds expired: %s", s.creds.Expiration)
+		fmt.Fprintf(w, "Bad provider type: %s", provider.Type)
 		return
 	}
 
-	json.NewEncoder(w).Encode(s.creds)
+	creds, err := passProvider.AWSCreds()
+	if err != nil {
+		w.WriteHeader(400)
+		fmt.Fprintf(w, "Get AWSCreds error: %s", err)
+		return
+	}
+
+	sess, err := session.NewSession(&aws.Config{
+		Credentials: credentials.NewStaticCredentials(creds.AccessKeyID, creds.SecretAccessKey, ""),
+	})
+	if err != nil {
+		w.WriteHeader(400)
+		fmt.Fprintf(w, "aws new session error: %s", err)
+		return
+	}
+
+	totpCode, err := awsTOTP(ctx, provider.AWS.OathName)
+	if err != nil {
+		w.WriteHeader(400)
+		fmt.Fprintf(w, "TOTP error: %s", err)
+		return
+	}
+	mfaSerial := provider.AWS.MFASerial
+
+	stsService := sts.New(sess)
+	out, err := stsService.GetSessionToken(&sts.GetSessionTokenInput{
+		DurationSeconds: aws.Int64(int64(timeoutSeconds)),
+		SerialNumber:    &mfaSerial,
+		TokenCode:       &totpCode,
+	})
+
+	if err != nil {
+		w.WriteHeader(400)
+		fmt.Fprintf(w, "get aws session error: %s", err)
+		return
+	}
+
+	json.NewEncoder(w).Encode(out.Credentials)
 }
 
 func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {

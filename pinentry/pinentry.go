@@ -38,7 +38,6 @@ func Confirm(ctx context.Context, prompt string) (bool, error) {
 
 	go func() {
 		err := p.Confirm()
-		fmt.Printf("confirm result: %s\n", err)
 		result <- err == nil
 	}()
 

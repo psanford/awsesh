@@ -105,10 +105,11 @@ func loginAction(cmd *cobra.Command, args []string) {
 }
 
 var (
-	accountIDF   string
-	roleNameF    string
-	accountNameF string
-	printEnv     bool
+	accountIDF     string
+	roleNameF      string
+	accountNameF   string
+	printEnv       bool
+	timeoutMinutes int
 )
 
 func assumeRoleCommand() *cobra.Command {
@@ -254,6 +255,7 @@ func sessionCommand() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVarP(&printEnv, "print", "", false, "Print ENV settings")
+	cmd.Flags().IntVarP(&timeoutMinutes, "timeout-minutes", "", 30, "Session Timeout in minutes")
 
 	return cmd
 }
@@ -264,7 +266,8 @@ func sessionAction(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
 	}
-	creds, err := client.Session()
+	timeoutSeconds := timeoutMinutes * 60
+	creds, err := client.Session(timeoutSeconds)
 	if err != nil {
 		log.Fatal(err)
 	}
