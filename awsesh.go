@@ -40,6 +40,12 @@ func main() {
 	rootCmd.AddCommand(sessionCommand())
 	rootCmd.AddCommand(completionCommand())
 
+	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if cmd.Use != "u2f-register" {
+			conf = loadConfig()
+		}
+	}
+
 	err := rootCmd.Execute()
 	if err != nil {
 		log.Fatal(err)
@@ -114,9 +120,10 @@ var (
 
 func assumeRoleCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "assume",
-		Short: "assume role",
-		Run:   assumeRoleAction,
+		Use:     "assume-role",
+		Aliases: []string{"assume"},
+		Short:   "assume role",
+		Run:     assumeRoleAction,
 	}
 
 	cmd.Flags().StringVarP(&accountIDF, "account-id", "", "", "Account ID")
