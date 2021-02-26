@@ -1,4 +1,4 @@
-package main
+package onepassword
 
 import (
 	"bytes"
@@ -6,19 +6,36 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+
+	"github.com/psanford/awsesh/passprovider"
+	"github.com/psanford/awsesh/pinentry"
 )
 
-var vaultName = "Private"
+func New(subdomain, vault, item string) passprovider.Provider {
+	return &onepass{
+		subdomain: subdomain,
+		vault:     vault,
+		item:      item,
+	}
+}
 
-func opLogin() (string, error) {
+type onepass struct {
+	subdomain string
+	vault     string
+	item      string
+
+	sessionToken string
+}
+
+func (op *onepass) login() error {
 	opPath, err := exec.LookPath("op")
 	if err != nil {
-		return "", fmt.Errorf("failed to find 'op' binary: %w", err)
+		return fmt.Errorf("failed to find 'op' binary: %w", err)
 	}
 
-	passwd, err := getPin("Enter your master 1password:")
+	passwd, err := pinentry.GetPin("Enter your master 1password:")
 	if err != nil {
-		return "", fmt.Errorf("failed to get password from user: %w", err)
+		return fmt.Errorf("failed to get password from user: %w", err)
 	}
 
 	cmd := exec.Command(opPath, "signin", "--raw")
@@ -45,26 +62,28 @@ func opLogin() (string, error) {
 	fmt.Println("wait")
 	err = cmd.Wait()
 	if err != nil {
-		return "", fmt.Errorf("failed to login to 1password: %s", stderr.Bytes())
+		return fmt.Errorf("failed to login to 1password: %s", stderr.Bytes())
 	}
 	sessionID := bytes.TrimSpace(stdout.Bytes())
 
-	return string(sessionID), nil
+	op.sessionToken = string(sessionID)
+
+	return nil
 }
 
-type awsCreds struct {
-	AccessKeyID     string `json:"access_key_id"`
-	SecretAccessKey string `json:"secret_access_key"`
-}
+func (op *onepass) AWSCreds() (*passprovider.AwsCreds, error) {
+	err := op.login()
+	if err != nil {
+		return nil, err
+	}
 
-func getAWSCreds(OPsessionID, subdomain, vault, item string) (*awsCreds, error) {
 	opPath, err := exec.LookPath("op")
 	if err != nil {
 		return nil, fmt.Errorf("failed to find 'op' binary: %w", err)
 	}
 
-	cmd := exec.Command(opPath, "get", "item", "--vault", vault, item)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("OP_SESSION_%s=%s", subdomain, OPsessionID))
+	cmd := exec.Command(opPath, "get", "item", "--vault", op.vault, op.item)
+	cmd.Env = append(os.Environ(), fmt.Sprintf("OP_SESSION_%s=%s", op.subdomain, op.sessionToken))
 
 	rawOut, err := cmd.CombinedOutput()
 	if err != nil {
@@ -77,7 +96,7 @@ func getAWSCreds(OPsessionID, subdomain, vault, item string) (*awsCreds, error) 
 		return nil, err
 	}
 
-	var creds awsCreds
+	var creds passprovider.AwsCreds
 	for _, f := range obj.Details.Fields {
 		switch f.Name {
 		case "username":

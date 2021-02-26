@@ -1,4 +1,4 @@
-package main
+package pinentry
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/foxcpp/go-assuan/pinentry"
 )
 
-func getPin(prompt string) (string, error) {
+func GetPin(prompt string) (string, error) {
 	p, err := pinentry.Launch()
 	if err != nil {
 		return "", fmt.Errorf("failed to start pinentry %w", err)
@@ -22,7 +22,7 @@ func getPin(prompt string) (string, error) {
 	return pin, err
 }
 
-func confirm(ctx context.Context, prompt string) (bool, error) {
+func Confirm(ctx context.Context, prompt string) (bool, error) {
 	childCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	p, err := launch(childCtx)

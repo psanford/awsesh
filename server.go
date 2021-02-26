@@ -17,6 +17,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/psanford/awsesh/onepassword"
+	"github.com/psanford/awsesh/pass"
+	"github.com/psanford/awsesh/passprovider"
+	"github.com/psanford/awsesh/pinentry"
 )
 
 type server struct {
@@ -71,7 +75,7 @@ func (s *server) confirmUserPresence(ctx context.Context) error {
 	verifyResult := make(chan error)
 
 	go func() {
-		ok, err := confirm(childCtx, "Tap yubikey to auth")
+		ok, err := pinentry.Confirm(childCtx, "Tap yubikey to auth")
 		if err != nil {
 			log.Printf("confirm err: %s", err)
 		}
@@ -107,14 +111,24 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	optoken, err := opLogin()
-	if err != nil {
+	provider := conf.Provider[0]
+
+	var passProvider passprovider.Provider
+
+	if provider.Type == "op" {
+		fmt.Println("op provider!")
+		passProvider = onepassword.New(provider.OP.Subdomain, provider.OP.Vault, provider.OP.Key)
+	} else if provider.Type == "pass" {
+		fmt.Println("pass provider!")
+		passProvider = pass.New(provider.Pass.Path)
+	} else {
+		log.Printf("Bad provider type: %s", provider.Type)
 		w.WriteHeader(400)
-		fmt.Fprintf(w, "1password login error: %s", err)
+		fmt.Fprintf(w, "Bad provider type: %s", provider.Type)
 		return
 	}
 
-	creds, err := getAWSCreds(optoken, conf.OP.Subdomain, conf.OP.Vault, conf.OP.Key)
+	creds, err := passProvider.AWSCreds()
 	if err != nil {
 		w.WriteHeader(400)
 		fmt.Fprintf(w, "1password getAWSCreds error: %s", err)
@@ -130,13 +144,13 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	totpCode, err := awsTOTP(ctx)
+	totpCode, err := awsTOTP(ctx, provider.AWS.OathName)
 	if err != nil {
 		w.WriteHeader(400)
 		fmt.Fprintf(w, "TOTP error: %s", err)
 		return
 	}
-	mfaSerial := conf.AWS.MFASerial
+	mfaSerial := provider.AWS.MFASerial
 
 	stsService := sts.New(sess)
 	out, err := stsService.GetSessionToken(&sts.GetSessionTokenInput{
@@ -234,10 +248,10 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(out.Credentials)
 }
 
-func awsTOTP(ctx context.Context) (string, error) {
+func awsTOTP(ctx context.Context, oathName string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "ykman", "oath", "code", "aws", "-s").CombinedOutput()
+	out, err := exec.CommandContext(ctx, "ykman", "oath", "code", oathName, "-s").CombinedOutput()
 
 	out = bytes.TrimSpace(out)
 
