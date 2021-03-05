@@ -88,11 +88,14 @@ func (c *Client) Login() error {
 	return nil
 }
 
-func (c *Client) AssumeRole(accountID, roleName, accountName string) (*sts.Credentials, error) {
+func (c *Client) AssumeRole(accountID, roleName, accountName string, timeoutSeconds int) (*sts.Credentials, error) {
 	data := make(url.Values)
 	data.Set("account_id", accountID)
 	data.Set("role_name", roleName)
 	data.Set("account_name", accountName)
+	if timeoutSeconds > 0 {
+		data.Set("timeout_seconds", strconv.Itoa(timeoutSeconds))
+	}
 	resp, err := c.httpClient.PostForm(fakeHost+"/assume_role", data)
 	if err != nil {
 		return nil, err

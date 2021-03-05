@@ -259,6 +259,16 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.ParseForm()
+	timeoutSeconds := 60 * 60 * 6
+	timeoutSecsStr := r.FormValue("timeout_seconds")
+	if timeoutSecsStr != "" {
+		i, _ := strconv.Atoi(timeoutSecsStr)
+		if i > 0 {
+			timeoutSeconds = i
+		}
+	}
+
 	err := s.confirmUserPresence(r.Context())
 	if err != nil {
 		w.WriteHeader(400)
@@ -292,6 +302,7 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 
 	stsService := sts.New(sess)
 	out, err := stsService.AssumeRole(&sts.AssumeRoleInput{
+		DurationSeconds: aws.Int64(int64(timeoutSeconds)),
 		RoleArn:         aws.String(roleARN),
 		RoleSessionName: aws.String("AWSCLI-Session"),
 	})

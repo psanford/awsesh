@@ -132,6 +132,7 @@ func assumeRoleCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&accountNameF, "name", "", "", "Account Name (friendly)")
 	cmd.Flags().BoolVarP(&printEnv, "print", "", false, "Print ENV settings")
 	cmd.Flags().StringVarP(&execCmd, "exec", "", "", "Exec command instead of dropping to shell")
+	cmd.Flags().IntVarP(&timeoutMinutes, "timeout-minutes", "", 360, "Timeout in minutes")
 
 	cmd.ValidArgsFunction = assumeRoleCompletions
 
@@ -172,7 +173,7 @@ func assumeRoleAction(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
 	}
-	creds, err := client.AssumeRole(accountID, roleName, accountName)
+	creds, err := client.AssumeRole(accountID, roleName, accountName, timeoutMinutes*60)
 	if err != nil {
 		log.Fatal(err)
 	}
