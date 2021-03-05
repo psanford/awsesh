@@ -114,6 +114,7 @@ var (
 	accountIDF     string
 	roleNameF      string
 	accountNameF   string
+	execCmd        string
 	printEnv       bool
 	timeoutMinutes int
 )
@@ -130,6 +131,7 @@ func assumeRoleCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&roleNameF, "role", "", "", "Role Name")
 	cmd.Flags().StringVarP(&accountNameF, "name", "", "", "Account Name (friendly)")
 	cmd.Flags().BoolVarP(&printEnv, "print", "", false, "Print ENV settings")
+	cmd.Flags().StringVarP(&execCmd, "exec", "", "", "Exec command instead of dropping to shell")
 
 	cmd.ValidArgsFunction = assumeRoleCompletions
 
@@ -196,7 +198,12 @@ func startEnvOrPrint(creds *sts.Credentials, name string) {
 		env.Set("AWS_SESSION_TOKEN", *creds.SessionToken)
 		env.Set("AWSESH_PROFILE", name)
 
-		cmd := exec.Command("/bin/bash")
+		var cmd *exec.Cmd
+		if execCmd != "" {
+			cmd = exec.Command("/bin/sh", "-c", execCmd)
+		} else {
+			cmd = exec.Command("/bin/bash")
+		}
 		cmd.Env = env
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
@@ -263,6 +270,7 @@ func sessionCommand() *cobra.Command {
 
 	cmd.Flags().BoolVarP(&printEnv, "print", "", false, "Print ENV settings")
 	cmd.Flags().IntVarP(&timeoutMinutes, "timeout-minutes", "", 30, "Session Timeout in minutes")
+	cmd.Flags().StringVarP(&execCmd, "exec", "", "", "Exec command instead of dropping to shell")
 
 	return cmd
 }
