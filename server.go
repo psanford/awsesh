@@ -127,6 +127,18 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var totpCode string
+	if provider.Type == "pass" {
+		// pass+yubikey can messup the totp interface on the yubikey.
+		// do totp first just for this case
+		totpCode, err = awsTOTP(ctx, provider.AWS.OathName)
+		if err != nil {
+			w.WriteHeader(400)
+			fmt.Fprintf(w, "TOTP error: %s", err)
+			return
+		}
+	}
+
 	creds, err := passProvider.AWSCreds()
 	if err != nil {
 		w.WriteHeader(400)
@@ -143,12 +155,15 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	totpCode, err := awsTOTP(ctx, provider.AWS.OathName)
-	if err != nil {
-		w.WriteHeader(400)
-		fmt.Fprintf(w, "TOTP error: %s", err)
-		return
+	if provider.Type != "pass" {
+		totpCode, err = awsTOTP(ctx, provider.AWS.OathName)
+		if err != nil {
+			w.WriteHeader(400)
+			fmt.Fprintf(w, "TOTP error: %s", err)
+			return
+		}
 	}
+
 	mfaSerial := provider.AWS.MFASerial
 
 	stsService := sts.New(sess)
