@@ -1,8 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -38,6 +42,7 @@ func main() {
 	rootCmd.AddCommand(assumeRoleCommand())
 	rootCmd.AddCommand(serverCommand())
 	rootCmd.AddCommand(sessionCommand())
+	rootCmd.AddCommand(webCommand())
 	rootCmd.AddCommand(completionCommand())
 
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
@@ -111,12 +116,13 @@ func loginAction(cmd *cobra.Command, args []string) {
 }
 
 var (
-	accountIDF     string
-	roleNameF      string
-	accountNameF   string
-	execCmd        string
-	printEnv       bool
-	timeoutMinutes int
+	accountIDF            string
+	roleNameF             string
+	accountNameF          string
+	execCmd               string
+	printEnv              bool
+	timeoutMinutesRole    int
+	timeoutMinutesSession int
 )
 
 func assumeRoleCommand() *cobra.Command {
@@ -132,7 +138,7 @@ func assumeRoleCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&accountNameF, "name", "", "", "Account Name (friendly)")
 	cmd.Flags().BoolVarP(&printEnv, "print", "", false, "Print ENV settings")
 	cmd.Flags().StringVarP(&execCmd, "exec", "", "", "Exec command instead of dropping to shell")
-	cmd.Flags().IntVarP(&timeoutMinutes, "timeout-minutes", "", 360, "Timeout in minutes")
+	cmd.Flags().IntVarP(&timeoutMinutesRole, "timeout-minutes", "", 60, "Timeout in minutes")
 
 	cmd.ValidArgsFunction = assumeRoleCompletions
 
@@ -173,7 +179,7 @@ func assumeRoleAction(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
 	}
-	creds, err := client.AssumeRole(accountID, roleName, accountName, timeoutMinutes*60)
+	creds, err := client.AssumeRole(accountID, roleName, accountName, timeoutMinutesRole*60)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -184,6 +190,126 @@ func assumeRoleAction(cmd *cobra.Command, args []string) {
 
 	startEnvOrPrint(creds, accountName)
 }
+
+func webCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "web-assume-role",
+		Aliases: []string{"web"},
+		Short:   "assume role into AWS web console UI",
+		Run:     webAction,
+	}
+
+	cmd.Flags().StringVarP(&accountIDF, "account-id", "", "", "Account ID")
+	cmd.Flags().StringVarP(&roleNameF, "role", "", "", "Role Name")
+	cmd.Flags().StringVarP(&accountNameF, "name", "", "", "Account Name (friendly)")
+	cmd.Flags().BoolVarP(&printEnv, "print", "", false, "Print ENV settings")
+	cmd.Flags().StringVarP(&execCmd, "exec", "", "", "Exec command instead of dropping to shell")
+	cmd.Flags().IntVarP(&timeoutMinutesRole, "timeout-minutes", "", 60, "Timeout in minutes")
+
+	cmd.ValidArgsFunction = assumeRoleCompletions
+
+	return cmd
+}
+
+func webAction(cmd *cobra.Command, args []string) {
+	var (
+		accountID   string
+		roleName    string
+		accountName string
+	)
+
+	if accountIDF != "" && roleNameF != "" {
+		accountID = accountIDF
+		roleName = roleNameF
+		accountName = accountNameF
+	} else if len(args) == 1 {
+		given := args[0]
+		for _, acct := range validAccounts() {
+			if given == acct.String() || given == acct.id {
+				accountID = acct.id
+				accountName = acct.env + "-" + acct.name
+				roleName = acct.role
+				break
+			}
+		}
+	} else {
+		log.Fatalf("usage: assume <account_id|long-account-id> [--account-id <id>, --role <role>, --name <friendly-name>]")
+	}
+
+	if accountID == "" || roleName == "" {
+		log.Fatalf("Invalid account")
+	}
+
+	client := NewClient()
+	err := client.Ping()
+	if err != nil {
+		log.Fatalf("Server communication error: %s", err)
+	}
+	creds, err := client.AssumeRole(accountID, roleName, accountName, timeoutMinutesRole*60)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if accountName == "" {
+		accountName = fmt.Sprintf("%s-%s", accountID, roleName)
+	}
+
+	jsonTxt, err := json.Marshal(map[string]string{
+		"sessionId":    *creds.AccessKeyId,
+		"sessionKey":   *creds.SecretAccessKey,
+		"sessionToken": *creds.SessionToken,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	loginURLPrefix := "https://signin.aws.amazon.com/federation"
+	req, err := http.NewRequest("GET", loginURLPrefix, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	q := req.URL.Query()
+	q.Add("Action", "getSigninToken")
+	q.Add("Session", string(jsonTxt))
+
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("getSigninToken returned non-200 status: %d", resp.StatusCode)
+	}
+
+	var signinTokenResp struct {
+		SigninToken string `json:"SigninToken"`
+	}
+
+	if err = json.Unmarshal([]byte(body), &signinTokenResp); err != nil {
+		log.Fatalf("parse signinTokenResp err: %s", err)
+	}
+
+	destination := "https://console.aws.amazon.com/"
+
+	loginURL := fmt.Sprintf(
+		"%s?Action=login&Issuer=aws-vault&Destination=%s&SigninToken=%s",
+		loginURLPrefix,
+		url.QueryEscape(destination),
+		url.QueryEscape(signinTokenResp.SigninToken),
+	)
+
+	fmt.Println(loginURL)
+}
+
 func startEnvOrPrint(creds *sts.Credentials, name string) {
 	if printEnv {
 		fmt.Printf("  export AWS_ACCESS_KEY_ID=%s\n", *creds.AccessKeyId)
@@ -270,7 +396,7 @@ func sessionCommand() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVarP(&printEnv, "print", "", false, "Print ENV settings")
-	cmd.Flags().IntVarP(&timeoutMinutes, "timeout-minutes", "", 30, "Session Timeout in minutes")
+	cmd.Flags().IntVarP(&timeoutMinutesSession, "timeout-minutes", "", 30, "Session Timeout in minutes")
 	cmd.Flags().StringVarP(&execCmd, "exec", "", "", "Exec command instead of dropping to shell")
 
 	return cmd
@@ -282,7 +408,7 @@ func sessionAction(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
 	}
-	timeoutSeconds := timeoutMinutes * 60
+	timeoutSeconds := timeoutMinutesSession * 60
 	creds, err := client.Session(timeoutSeconds)
 	if err != nil {
 		log.Fatal(err)
