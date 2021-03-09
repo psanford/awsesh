@@ -275,7 +275,7 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.ParseForm()
-	timeoutSeconds := 60 * 60 * 6
+	timeoutSeconds := 60 * 60
 	timeoutSecsStr := r.FormValue("timeout_seconds")
 	if timeoutSecsStr != "" {
 		i, _ := strconv.Atoi(timeoutSecsStr)
