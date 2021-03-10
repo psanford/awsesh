@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/psanford/awsesh/config"
 )
 
 type Client struct {
@@ -30,7 +31,7 @@ func NewClientWithTimeout(tout time.Duration) *Client {
 
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return dialer.DialContext(ctx, "unix", socketPath())
+			return dialer.DialContext(ctx, "unix", config.SocketPath())
 		},
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,

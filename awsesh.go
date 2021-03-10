@@ -16,6 +16,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	awssession "github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/psanford/awsesh/client"
+	"github.com/psanford/awsesh/config"
+	"github.com/psanford/awsesh/server"
+	"github.com/psanford/awsesh/u2f"
 	"github.com/spf13/cobra"
 )
 
@@ -26,11 +30,7 @@ var rootCmd = &cobra.Command{
 	Short: "AWS Session Helpers",
 }
 
-var conf Config
-
 func main() {
-	conf = loadConfig()
-
 	if os.Getenv("AWS_DEFAULT_REGION") != "" {
 		region = os.Getenv("AWS_DEFAULT_REGION")
 	}
@@ -44,12 +44,6 @@ func main() {
 	rootCmd.AddCommand(sessionCommand())
 	rootCmd.AddCommand(webCommand())
 	rootCmd.AddCommand(completionCommand())
-
-	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-		if cmd.Use != "u2f-register" {
-			conf = loadConfig()
-		}
-	}
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -66,8 +60,9 @@ func serverCommand() *cobra.Command {
 }
 
 func serverAction(cmd *cobra.Command, args []string) {
-	s := newServer()
-	err := s.listenAndServe()
+	conf := config.LoadConfig()
+	s := server.New(&conf)
+	err := s.ListenAndServe()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -83,7 +78,7 @@ func u2fRegisterCommand() *cobra.Command {
 }
 
 func u2fRegisterAction(cmd *cobra.Command, args []string) {
-	handle, err := registerDevice()
+	handle, err := u2f.RegisterDevice()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -100,7 +95,7 @@ func loginCommand() *cobra.Command {
 }
 
 func loginAction(cmd *cobra.Command, args []string) {
-	client := NewClient()
+	client := client.NewClient()
 
 	err := client.Ping()
 	if err != nil {
@@ -158,11 +153,11 @@ func assumeRoleAction(cmd *cobra.Command, args []string) {
 		accountName = accountNameF
 	} else if len(args) == 1 {
 		given := args[0]
-		for _, acct := range validAccounts() {
-			if given == acct.String() || given == acct.id {
-				accountID = acct.id
-				accountName = acct.env + "-" + acct.name
-				roleName = acct.role
+		for _, acct := range config.ValidAccounts() {
+			if given == acct.String() || given == acct.ID {
+				accountID = acct.ID
+				accountName = acct.Env + "-" + acct.Name
+				roleName = acct.Role
 				break
 			}
 		}
@@ -174,7 +169,7 @@ func assumeRoleAction(cmd *cobra.Command, args []string) {
 		log.Fatalf("Invalid account")
 	}
 
-	client := NewClient()
+	client := client.NewClient()
 	err := client.Ping()
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
@@ -224,11 +219,11 @@ func webAction(cmd *cobra.Command, args []string) {
 		accountName = accountNameF
 	} else if len(args) == 1 {
 		given := args[0]
-		for _, acct := range validAccounts() {
-			if given == acct.String() || given == acct.id {
-				accountID = acct.id
-				accountName = acct.env + "-" + acct.name
-				roleName = acct.role
+		for _, acct := range config.ValidAccounts() {
+			if given == acct.String() || given == acct.ID {
+				accountID = acct.ID
+				accountName = acct.Env + "-" + acct.Name
+				roleName = acct.Role
 				break
 			}
 		}
@@ -240,7 +235,7 @@ func webAction(cmd *cobra.Command, args []string) {
 		log.Fatalf("Invalid account")
 	}
 
-	client := NewClient()
+	client := client.NewClient()
 	err := client.Ping()
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
@@ -373,15 +368,15 @@ func startEnvOrPrint(creds *sts.Credentials, name string) {
 }
 
 func assumeRoleCompletions(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	accounts := validAccounts()
+	accounts := config.ValidAccounts()
 
 	var completions []string
 	for _, account := range accounts {
 		if strings.HasPrefix(account.String(), toComplete) {
 			completions = append(completions, account.String())
 		}
-		if strings.HasPrefix(account.id, toComplete) {
-			completions = append(completions, account.id)
+		if strings.HasPrefix(account.ID, toComplete) {
+			completions = append(completions, account.ID)
 		}
 	}
 
@@ -403,7 +398,7 @@ func sessionCommand() *cobra.Command {
 }
 
 func sessionAction(cmd *cobra.Command, args []string) {
-	client := NewClient()
+	client := client.NewClient()
 	err := client.Ping()
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
@@ -435,7 +430,7 @@ func listAccountsCommand() *cobra.Command {
 }
 
 func listAccountsAction(cmd *cobra.Command, args []string) {
-	for _, acct := range validAccounts() {
+	for _, acct := range config.ValidAccounts() {
 		fmt.Println(acct.String())
 	}
 }

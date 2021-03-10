@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/psanford/awsesh/config"
+	"github.com/psanford/awsesh/u2f"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +31,8 @@ func u2fVerifyCommand() *cobra.Command {
 
 func u2fVerifyAction(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
-	err := verifyDevice(ctx)
+	conf := config.LoadConfig()
+	err := u2f.VerifyDevice(ctx, conf.KeyHandle)
 	if err != nil {
 		log.Fatal(err)
 	}

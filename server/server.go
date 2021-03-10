@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bytes"
@@ -18,30 +18,34 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/psanford/awsesh/client"
+	"github.com/psanford/awsesh/config"
 	"github.com/psanford/awsesh/onepassword"
 	"github.com/psanford/awsesh/pass"
 	"github.com/psanford/awsesh/passprovider"
 	"github.com/psanford/awsesh/pinentry"
+	"github.com/psanford/awsesh/u2f"
 )
 
 type server struct {
 	creds   *sts.Credentials
 	handler http.Handler
+	conf    *config.Config
 }
 
-func (s *server) listenAndServe() error {
-	_, err := os.Stat(socketPath())
+func (s *server) ListenAndServe() error {
+	_, err := os.Stat(config.SocketPath())
 	if err == nil {
-		client := NewClientWithTimeout(1 * time.Second)
-		err = client.Ping()
+		c := client.NewClientWithTimeout(1 * time.Second)
+		err = c.Ping()
 		if err == nil {
 			return errors.New("Existing server already running")
 		}
 
-		os.Remove(socketPath())
+		os.Remove(config.SocketPath())
 	}
 
-	l, err := net.Listen("unix", socketPath())
+	l, err := net.Listen("unix", config.SocketPath())
 	if err != nil {
 		return err
 	}
@@ -49,8 +53,10 @@ func (s *server) listenAndServe() error {
 	return http.Serve(l, s.handler)
 }
 
-func newServer() *server {
-	s := &server{}
+func New(conf *config.Config) *server {
+	s := &server{
+		conf: conf,
+	}
 
 	mux := http.NewServeMux()
 
@@ -86,7 +92,7 @@ func (s *server) confirmUserPresence(ctx context.Context) error {
 	}()
 
 	go func() {
-		err := verifyDevice(childCtx)
+		err := u2f.VerifyDevice(childCtx, s.conf.KeyHandle)
 		verifyResult <- err
 	}()
 
@@ -112,7 +118,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider := conf.Provider[0]
+	provider := s.conf.Provider[0]
 
 	var passProvider passprovider.Provider
 
@@ -210,7 +216,7 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider := conf.Provider[0]
+	provider := s.conf.Provider[0]
 
 	var passProvider passprovider.Provider
 

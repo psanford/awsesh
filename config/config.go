@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"bufio"
@@ -40,11 +40,11 @@ func confDir() string {
 	return filepath.Join(u.HomeDir, ".awsesh")
 }
 
-func socketPath() string {
+func SocketPath() string {
 	return filepath.Join(confDir(), ".control.sock")
 }
 
-func loadConfig() Config {
+func LoadConfig() Config {
 	confPath := filepath.Join(confDir(), "config.toml")
 	tml, err := ioutil.ReadFile(confPath)
 	if err != nil {
@@ -63,18 +63,18 @@ func loadConfig() Config {
 	return conf
 }
 
-type account struct {
-	env  string
-	id   string
-	role string
-	name string
+type Account struct {
+	Env  string
+	ID   string
+	Role string
+	Name string
 }
 
-func (a account) String() string {
-	return fmt.Sprintf("%s-%s-%s", a.env, a.name, a.id)
+func (a Account) String() string {
+	return fmt.Sprintf("%s-%s-%s", a.Env, a.Name, a.ID)
 }
 
-func validAccounts() []account {
+func ValidAccounts() []Account {
 	path := filepath.Join(confDir(), "accounts")
 
 	f, err := os.Open(path)
@@ -83,7 +83,7 @@ func validAccounts() []account {
 	}
 	defer f.Close()
 
-	var out []account
+	var out []Account
 
 	r := bufio.NewReader(f)
 	for {
@@ -98,11 +98,11 @@ func validAccounts() []account {
 		if len(parts) < 3 {
 			continue
 		}
-		out = append(out, account{
-			env:  parts[0],
-			id:   parts[1],
-			role: parts[2],
-			name: parts[3],
+		out = append(out, Account{
+			Env:  parts[0],
+			ID:   parts[1],
+			Role: parts[2],
+			Name: parts[3],
 		})
 	}
 	return out

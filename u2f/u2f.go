@@ -1,4 +1,4 @@
-package main
+package u2f
 
 import (
 	"bytes"
@@ -47,7 +47,7 @@ func appIDSha() []byte {
 	return applicationIDSha.Sum(nil)
 }
 
-func registerDevice() (*RegisterResponse, error) {
+func RegisterDevice() (*RegisterResponse, error) {
 	d, err := getDevice()
 	if err != nil {
 		return nil, err
@@ -86,9 +86,9 @@ func registerDevice() (*RegisterResponse, error) {
 	return parsed, nil
 }
 
-func verifyDevice(ctx context.Context) error {
+func VerifyDevice(ctx context.Context, keyHandle string) error {
 	var rr RegisterResponse
-	err := rr.Unmarshal(conf.KeyHandle)
+	err := rr.Unmarshal(keyHandle)
 	if err != nil {
 		return err
 	}

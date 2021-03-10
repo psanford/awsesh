@@ -1,4 +1,4 @@
-package main
+package u2f
 
 import (
 	"crypto/sha256"
