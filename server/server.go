@@ -28,7 +28,7 @@ import (
 )
 
 type server struct {
-	creds   *sts.Credentials
+	creds   map[string]*sts.Credentials
 	handler http.Handler
 	conf    *config.Config
 }
@@ -55,7 +55,8 @@ func (s *server) ListenAndServe() error {
 
 func New(conf *config.Config) *server {
 	s := &server{
-		conf: conf,
+		creds: make(map[string]*sts.Credentials),
+		conf:  conf,
 	}
 
 	mux := http.NewServeMux()
@@ -185,18 +186,12 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.creds = out.Credentials
+	s.creds[provider.ID] = out.Credentials
 
 	fmt.Fprintf(w, "ok!")
 }
 
 func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
-	if s.creds == nil {
-		w.WriteHeader(400)
-		fmt.Fprintf(w, "No creds available")
-		return
-	}
-
 	r.ParseForm()
 	timeoutSeconds := 60 * 30
 	timeoutSecsStr := r.FormValue("timeout_seconds")
@@ -207,6 +202,8 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	provider := s.conf.Provider[0]
+
 	ctx := r.Context()
 
 	err := s.confirmUserPresence(ctx)
@@ -215,8 +212,6 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, err.Error())
 		return
 	}
-
-	provider := s.conf.Provider[0]
 
 	var passProvider passprovider.Provider
 
@@ -274,7 +269,10 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 
-	if s.creds == nil {
+	provider := s.conf.Provider[0]
+	creds := s.creds[provider.ID]
+
+	if creds == nil {
 		w.WriteHeader(400)
 		fmt.Fprintf(w, "No creds available")
 		return
@@ -297,14 +295,14 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.creds.Expiration.Before(time.Now()) {
+	if creds.Expiration.Before(time.Now()) {
 		w.WriteHeader(400)
-		fmt.Fprintf(w, "creds expired: %s", s.creds.Expiration)
+		fmt.Fprintf(w, "creds expired: %s", creds.Expiration)
 		return
 	}
 
 	sess, err := session.NewSession(&aws.Config{
-		Credentials: credentials.NewStaticCredentials(*s.creds.AccessKeyId, *s.creds.SecretAccessKey, *s.creds.SessionToken),
+		Credentials: credentials.NewStaticCredentials(*creds.AccessKeyId, *creds.SecretAccessKey, *creds.SessionToken),
 	})
 	if err != nil {
 		w.WriteHeader(400)
