@@ -111,6 +111,7 @@ func (s *server) confirmUserPresence(ctx context.Context) error {
 
 func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	r.ParseForm()
 
 	err := s.confirmUserPresence(ctx)
 	if err != nil {
@@ -119,7 +120,12 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider := s.conf.Provider[0]
+	provider, err := s.conf.FindProvider(r.FormValue("provider_id"))
+	if err != nil {
+		w.WriteHeader(400)
+		fmt.Fprintf(w, err.Error())
+		return
+	}
 
 	var passProvider passprovider.Provider
 
@@ -193,6 +199,8 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	ctx := r.Context()
+
 	timeoutSeconds := 60 * 30
 	timeoutSecsStr := r.FormValue("timeout_seconds")
 	if timeoutSecsStr != "" {
@@ -202,11 +210,14 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	provider := s.conf.Provider[0]
+	provider, err := s.conf.FindProvider(r.FormValue("provider_id"))
+	if err != nil {
+		w.WriteHeader(400)
+		fmt.Fprintf(w, err.Error())
+		return
+	}
 
-	ctx := r.Context()
-
-	err := s.confirmUserPresence(ctx)
+	err = s.confirmUserPresence(ctx)
 	if err != nil {
 		w.WriteHeader(400)
 		fmt.Fprintf(w, err.Error())
@@ -269,7 +280,13 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 
-	provider := s.conf.Provider[0]
+	provider, err := s.conf.FindProvider(r.FormValue("provider_id"))
+	if err != nil {
+		w.WriteHeader(400)
+		fmt.Fprintf(w, err.Error())
+		return
+	}
+
 	creds := s.creds[provider.ID]
 
 	if creds == nil {
@@ -288,7 +305,7 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err := s.confirmUserPresence(r.Context())
+	err = s.confirmUserPresence(r.Context())
 	if err != nil {
 		w.WriteHeader(400)
 		fmt.Fprintf(w, err.Error())

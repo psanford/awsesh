@@ -2,6 +2,7 @@ package config
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -13,23 +14,37 @@ import (
 )
 
 type Config struct {
-	KeyHandle string `toml:"key-handle"`
-	Provider  []struct {
-		ID   string `toml:"id"`
-		Type string `toml:"type"`
-		OP   struct {
-			Subdomain string `toml:"subdomain"`
-			Vault     string `toml:"vault"`
-			Key       string `toml:"key"`
-		} `toml:"op"`
-		AWS struct {
-			MFASerial string `toml:"mfa-serial"`
-			OathName  string `toml:"oath-name"`
-		} `toml:"aws"`
-		Pass struct {
-			Path string `toml:"path"`
+	KeyHandle string     `toml:"key-handle"`
+	Provider  []Provider `toml:"provider"`
+}
+
+type Provider struct {
+	ID   string `toml:"id"`
+	Type string `toml:"type"`
+	OP   struct {
+		Subdomain string `toml:"subdomain"`
+		Vault     string `toml:"vault"`
+		Key       string `toml:"key"`
+	} `toml:"op"`
+	AWS struct {
+		MFASerial string `toml:"mfa-serial"`
+		OathName  string `toml:"oath-name"`
+	} `toml:"aws"`
+	Pass struct {
+		Path string `toml:"path"`
+	}
+}
+
+func (c *Config) FindProvider(id string) (Provider, error) {
+	if id == "" {
+		return c.Provider[0], nil
+	}
+	for _, p := range c.Provider {
+		if p.ID == id {
+			return p, nil
 		}
-	} `toml:"provider"`
+	}
+	return Provider{}, errors.New("no provider found matching id")
 }
 
 func confDir() string {

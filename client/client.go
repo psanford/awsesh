@@ -70,8 +70,10 @@ func (c *Client) Ping() error {
 	return nil
 }
 
-func (c *Client) Login() error {
-	resp, err := c.httpClient.Get(fakeHost + "/login")
+func (c *Client) Login(providerID string) error {
+	args := make(url.Values)
+	args.Add("provider_id", providerID)
+	resp, err := c.httpClient.PostForm(fakeHost+"/login", args)
 	if err != nil {
 		return err
 	}
@@ -89,11 +91,12 @@ func (c *Client) Login() error {
 	return nil
 }
 
-func (c *Client) AssumeRole(accountID, roleName, accountName string, timeoutSeconds int) (*sts.Credentials, error) {
+func (c *Client) AssumeRole(providerID, accountID, roleName, accountName string, timeoutSeconds int) (*sts.Credentials, error) {
 	data := make(url.Values)
 	data.Set("account_id", accountID)
 	data.Set("role_name", roleName)
 	data.Set("account_name", accountName)
+	data.Set("provider_id", providerID)
 	if timeoutSeconds > 0 {
 		data.Set("timeout_seconds", strconv.Itoa(timeoutSeconds))
 	}
@@ -118,11 +121,13 @@ func (c *Client) AssumeRole(accountID, roleName, accountName string, timeoutSeco
 	return &creds, nil
 }
 
-func (c *Client) Session(timeoutSeconds int) (*sts.Credentials, error) {
+func (c *Client) Session(providerID string, timeoutSeconds int) (*sts.Credentials, error) {
 	data := make(url.Values)
 	if timeoutSeconds > 0 {
 		data.Set("timeout_seconds", strconv.Itoa(timeoutSeconds))
 	}
+
+	data.Set("provider_id", providerID)
 
 	resp, err := c.httpClient.PostForm(fakeHost+"/session", data)
 	if err != nil {

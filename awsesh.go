@@ -23,17 +23,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var region = "us-east-1"
+var (
+	providerID string
 
-var rootCmd = &cobra.Command{
-	Use:   "awsesh",
-	Short: "AWS Session Helpers",
-}
+	rootCmd = &cobra.Command{
+		Use:   "awsesh",
+		Short: "AWS Session Helpers",
+	}
+	region = "us-east-1"
+)
 
 func main() {
 	if os.Getenv("AWS_DEFAULT_REGION") != "" {
 		region = os.Getenv("AWS_DEFAULT_REGION")
 	}
+
+	providerID = os.Getenv("AWSESH_PROVIDER_ID")
+
+	rootCmd.PersistentFlags().StringVar(&providerID, "provider_id", "", "Profile ID to use (defaults to first in config file)")
 
 	rootCmd.AddCommand(u2fRegisterCommand())
 	rootCmd.AddCommand(debugCommand())
@@ -102,7 +109,7 @@ func loginAction(cmd *cobra.Command, args []string) {
 		log.Fatalf("Server communication error: %s", err)
 	}
 
-	err = client.Login()
+	err = client.Login(providerID)
 	if err != nil {
 		log.Fatalf("Login error: %s", err)
 	}
@@ -174,7 +181,7 @@ func assumeRoleAction(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
 	}
-	creds, err := client.AssumeRole(accountID, roleName, accountName, timeoutMinutesRole*60)
+	creds, err := client.AssumeRole(providerID, accountID, roleName, accountName, timeoutMinutesRole*60)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -240,7 +247,7 @@ func webAction(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
 	}
-	creds, err := client.AssumeRole(accountID, roleName, accountName, timeoutMinutesRole*60)
+	creds, err := client.AssumeRole(providerID, accountID, roleName, accountName, timeoutMinutesRole*60)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -404,7 +411,7 @@ func sessionAction(cmd *cobra.Command, args []string) {
 		log.Fatalf("Server communication error: %s", err)
 	}
 	timeoutSeconds := timeoutMinutesSession * 60
-	creds, err := client.Session(timeoutSeconds)
+	creds, err := client.Session(providerID, timeoutSeconds)
 	if err != nil {
 		log.Fatal(err)
 	}
