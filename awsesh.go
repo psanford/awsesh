@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -318,6 +319,8 @@ func startEnvOrPrint(creds *sts.Credentials, name string) {
 		fmt.Printf("  export AWS_SECRET_ACCESS_KEY=%s\n", *creds.SecretAccessKey)
 		fmt.Printf("  export AWS_SESSION_TOKEN=%s\n", *creds.SessionToken)
 		fmt.Printf("  export AWSESH_PROFILE=\"%s\"", name)
+		fmt.Printf("  export AWSESH_SESSION_EXPIRATION=\"%d\"", creds.Expiration.Unix())
+
 		fmt.Printf(`  export PS1="(awsesh-%s)  \\[\\033[01;35m\\]\\w\\[\\033[00m\\]\\$ "`, name)
 		fmt.Println()
 	} else {
@@ -326,6 +329,7 @@ func startEnvOrPrint(creds *sts.Credentials, name string) {
 		env.Set("AWS_SECRET_ACCESS_KEY", *creds.SecretAccessKey)
 		env.Set("AWS_SESSION_TOKEN", *creds.SessionToken)
 		env.Set("AWSESH_PROFILE", name)
+		env.Set("AWSESH_SESSION_EXPIRATION", strconv.Itoa(int(creds.Expiration.Unix())))
 
 		var cmd *exec.Cmd
 		if execCmd != "" {
