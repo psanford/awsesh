@@ -56,6 +56,10 @@ func confDir() string {
 }
 
 func SocketPath() string {
+	sockPath := os.Getenv("AWSESH_SOCKET")
+	if sockPath != "" {
+		return sockPath
+	}
 	return filepath.Join(confDir(), ".control.sock")
 }
 
