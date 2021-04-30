@@ -14,18 +14,16 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/aws/aws-sdk-go/aws"
-	awssession "github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/psanford/awsesh/client"
 	"github.com/psanford/awsesh/config"
+	"github.com/psanford/awsesh/messages"
 	"github.com/psanford/awsesh/server"
 	"github.com/psanford/awsesh/u2f"
 	"github.com/spf13/cobra"
 )
 
 var (
-	providerID string
+	profileID string
 
 	rootCmd = &cobra.Command{
 		Use:   "awsesh",
@@ -39,9 +37,9 @@ func main() {
 		region = os.Getenv("AWS_DEFAULT_REGION")
 	}
 
-	providerID = os.Getenv("AWSESH_PROVIDER_ID")
+	profileID = os.Getenv("AWSESH_PROFILE_ID")
 
-	rootCmd.PersistentFlags().StringVar(&providerID, "provider_id", "", "Profile ID to use (defaults to first in config file)")
+	rootCmd.PersistentFlags().StringVarP(&profileID, "profile", "p", "", "Profile ID to use (defaults to first in config file)")
 
 	rootCmd.AddCommand(u2fRegisterCommand())
 	rootCmd.AddCommand(debugCommand())
@@ -110,7 +108,7 @@ func loginAction(cmd *cobra.Command, args []string) {
 		log.Fatalf("Server communication error: %s", err)
 	}
 
-	err = client.Login(providerID)
+	err = client.Login(profileID)
 	if err != nil {
 		log.Fatalf("Login error: %s", err)
 	}
@@ -182,7 +180,7 @@ func assumeRoleAction(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
 	}
-	creds, err := client.AssumeRole(providerID, accountID, roleName, accountName, timeoutMinutesRole*60)
+	creds, err := client.AssumeRole(profileID, accountID, roleName, accountName, timeoutMinutesRole*60)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -248,7 +246,7 @@ func webAction(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Server communication error: %s", err)
 	}
-	creds, err := client.AssumeRole(providerID, accountID, roleName, accountName, timeoutMinutesRole*60)
+	creds, err := client.AssumeRole(profileID, accountID, roleName, accountName, timeoutMinutesRole*60)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -313,11 +311,12 @@ func webAction(cmd *cobra.Command, args []string) {
 	fmt.Println(loginURL)
 }
 
-func startEnvOrPrint(creds *sts.Credentials, name string) {
+func startEnvOrPrint(creds *messages.Credentials, name string) {
 	if printEnv {
 		fmt.Printf("  export AWS_ACCESS_KEY_ID=%s\n", *creds.AccessKeyId)
 		fmt.Printf("  export AWS_SECRET_ACCESS_KEY=%s\n", *creds.SecretAccessKey)
 		fmt.Printf("  export AWS_SESSION_TOKEN=%s\n", *creds.SessionToken)
+		fmt.Printf("  export AWS_DEFAULT_REGION=\"%s\"", creds.Region)
 		fmt.Printf("  export AWSESH_PROFILE=\"%s\"", name)
 		fmt.Printf("  export AWSESH_SESSION_EXPIRATION=\"%d\"", creds.Expiration.Unix())
 
@@ -328,6 +327,7 @@ func startEnvOrPrint(creds *sts.Credentials, name string) {
 		env.Set("AWS_ACCESS_KEY_ID", *creds.AccessKeyId)
 		env.Set("AWS_SECRET_ACCESS_KEY", *creds.SecretAccessKey)
 		env.Set("AWS_SESSION_TOKEN", *creds.SessionToken)
+		env.Set("AWS_DEFAULT_REGION", creds.Region)
 		env.Set("AWSESH_PROFILE", name)
 		env.Set("AWSESH_SESSION_EXPIRATION", strconv.Itoa(int(creds.Expiration.Unix())))
 
@@ -415,21 +415,12 @@ func sessionAction(cmd *cobra.Command, args []string) {
 		log.Fatalf("Server communication error: %s", err)
 	}
 	timeoutSeconds := timeoutMinutesSession * 60
-	creds, err := client.Session(providerID, timeoutSeconds)
+	creds, err := client.Session(profileID, timeoutSeconds)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	startEnvOrPrint(creds, "mommy-session")
-}
-
-func mommySession() *awssession.Session {
-	sess, err := awssession.NewSession(&aws.Config{Region: &region})
-	if err != nil {
-		log.Fatalf("AWS NewSession error: %s", err)
-	}
-
-	return sess
 }
 
 func listAccountsCommand() *cobra.Command {

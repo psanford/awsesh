@@ -14,14 +14,14 @@ import (
 )
 
 type Config struct {
-	KeyHandle string     `toml:"key-handle"`
-	Provider  []Provider `toml:"provider"`
+	KeyHandle string    `toml:"key-handle"`
+	Profile   []Profile `toml:"profile"`
 }
 
-type Provider struct {
-	ID   string `toml:"id"`
-	Type string `toml:"type"`
-	OP   struct {
+type Profile struct {
+	ID       string `toml:"id"`
+	Provider string `toml:"provider"`
+	OP       struct {
 		Subdomain string `toml:"subdomain"`
 		Vault     string `toml:"vault"`
 		Key       string `toml:"key"`
@@ -29,23 +29,32 @@ type Provider struct {
 	AWS struct {
 		MFASerial string `toml:"mfa-serial"`
 		OathName  string `toml:"oath-name"`
+
+		// AWS Region. If empty string, will default to "us-east-1"
+		Region string `toml:"region"`
+		// AWS ARN partition. If empty string will default to "aws".
+		// Use this for gov and china partitions
+		Partition string `toml:"partition"`
 	} `toml:"aws"`
 	Pass struct {
 		Path string `toml:"path"`
 	}
 }
 
-func (c *Config) FindProvider(id string) (Provider, error) {
+func (c *Config) FindProfile(id string) (Profile, error) {
 	if id == "" {
-		return c.Provider[0], nil
+		return c.Profile[0], nil
 	}
-	for _, p := range c.Provider {
+	for _, p := range c.Profile {
 		if p.ID == id {
 			return p, nil
 		}
 	}
-	return Provider{}, errors.New("no provider found matching id")
+	return Profile{}, errors.New("no profile found matching id")
 }
+
+var AWSDefaultRegion = "us-east-1"
+var AWSDefaultPartition = "aws"
 
 func confDir() string {
 	u, err := user.Current()
@@ -77,6 +86,16 @@ func LoadConfig() Config {
 
 	if conf.KeyHandle == "" {
 		panic(fmt.Sprintf("key-handle not set in config file"))
+	}
+
+	for i, p := range conf.Profile {
+		if p.AWS.Region == "" {
+			p.AWS.Region = AWSDefaultRegion
+		}
+		if p.AWS.Partition == "" {
+			p.AWS.Partition = AWSDefaultPartition
+		}
+		conf.Profile[i] = p
 	}
 
 	return conf

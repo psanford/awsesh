@@ -20,6 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/psanford/awsesh/client"
 	"github.com/psanford/awsesh/config"
+	"github.com/psanford/awsesh/messages"
 	"github.com/psanford/awsesh/onepassword"
 	"github.com/psanford/awsesh/pass"
 	"github.com/psanford/awsesh/passprovider"
@@ -120,7 +121,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, err := s.conf.FindProvider(r.FormValue("provider_id"))
+	provider, err := s.conf.FindProfile(r.FormValue("profile_id"))
 	if err != nil {
 		w.WriteHeader(400)
 		fmt.Fprintf(w, err.Error())
@@ -129,19 +130,19 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	var passProvider passprovider.Provider
 
-	if provider.Type == "op" {
+	if provider.Provider == "op" {
 		passProvider = onepassword.New(provider.OP.Subdomain, provider.OP.Vault, provider.OP.Key)
-	} else if provider.Type == "pass" {
+	} else if provider.Provider == "pass" {
 		passProvider = pass.New(provider.Pass.Path)
 	} else {
-		log.Printf("Bad provider type: %s", provider.Type)
+		log.Printf("Bad provider type: %s", provider.Provider)
 		w.WriteHeader(400)
-		fmt.Fprintf(w, "Bad provider type: %s", provider.Type)
+		fmt.Fprintf(w, "Bad provider type: %s", provider.Provider)
 		return
 	}
 
 	var totpCode string
-	if provider.Type == "pass" {
+	if provider.Provider == "pass" {
 		// pass+yubikey can messup the totp interface on the yubikey.
 		// do totp first just for this case
 		totpCode, err = awsTOTP(ctx, provider.AWS.OathName)
@@ -160,6 +161,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess, err := session.NewSession(&aws.Config{
+		Region:      aws.String(provider.AWS.Region),
 		Credentials: credentials.NewStaticCredentials(creds.AccessKeyID, creds.SecretAccessKey, ""),
 	})
 	if err != nil {
@@ -168,7 +170,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if provider.Type != "pass" {
+	if provider.Provider != "pass" {
 		totpCode, err = awsTOTP(ctx, provider.AWS.OathName)
 		if err != nil {
 			w.WriteHeader(400)
@@ -210,7 +212,7 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	provider, err := s.conf.FindProvider(r.FormValue("provider_id"))
+	provider, err := s.conf.FindProfile(r.FormValue("profile_id"))
 	if err != nil {
 		w.WriteHeader(400)
 		fmt.Fprintf(w, err.Error())
@@ -226,14 +228,14 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 
 	var passProvider passprovider.Provider
 
-	if provider.Type == "op" {
+	if provider.Provider == "op" {
 		passProvider = onepassword.New(provider.OP.Subdomain, provider.OP.Vault, provider.OP.Key)
-	} else if provider.Type == "pass" {
+	} else if provider.Provider == "pass" {
 		passProvider = pass.New(provider.Pass.Path)
 	} else {
-		log.Printf("Bad provider type: %s", provider.Type)
+		log.Printf("Bad provider type: %s", provider.Provider)
 		w.WriteHeader(400)
-		fmt.Fprintf(w, "Bad provider type: %s", provider.Type)
+		fmt.Fprintf(w, "Bad provider type: %s", provider.Provider)
 		return
 	}
 
@@ -245,6 +247,7 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess, err := session.NewSession(&aws.Config{
+		Region:      aws.String(provider.AWS.Region),
 		Credentials: credentials.NewStaticCredentials(creds.AccessKeyID, creds.SecretAccessKey, ""),
 	})
 	if err != nil {
@@ -274,13 +277,18 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(out.Credentials)
+	result := messages.Credentials{
+		Credentials: out.Credentials,
+		Region:      provider.AWS.Region,
+	}
+
+	json.NewEncoder(w).Encode(result)
 }
 
 func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 
-	provider, err := s.conf.FindProvider(r.FormValue("provider_id"))
+	provider, err := s.conf.FindProfile(r.FormValue("profile_id"))
 	if err != nil {
 		w.WriteHeader(400)
 		fmt.Fprintf(w, err.Error())
@@ -319,6 +327,7 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess, err := session.NewSession(&aws.Config{
+		Region:      aws.String(provider.AWS.Region),
 		Credentials: credentials.NewStaticCredentials(*creds.AccessKeyId, *creds.SecretAccessKey, *creds.SessionToken),
 	})
 	if err != nil {
@@ -334,7 +343,7 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 		accountName = "role"
 	}
 
-	roleARN := fmt.Sprintf("arn:aws:iam::%s:role/%s", accountID, roleName)
+	roleARN := fmt.Sprintf("arn:%s:iam::%s:role/%s", provider.AWS.Partition, accountID, roleName)
 
 	stsService := sts.New(sess)
 	out, err := stsService.AssumeRole(&sts.AssumeRoleInput{
@@ -349,7 +358,12 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(out.Credentials)
+	result := messages.Credentials{
+		Credentials: out.Credentials,
+		Region:      provider.AWS.Region,
+	}
+
+	json.NewEncoder(w).Encode(result)
 }
 
 func awsTOTP(ctx context.Context, oathName string) (string, error) {

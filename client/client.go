@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/psanford/awsesh/config"
+	"github.com/psanford/awsesh/messages"
 )
 
 type Client struct {
@@ -70,9 +70,9 @@ func (c *Client) Ping() error {
 	return nil
 }
 
-func (c *Client) Login(providerID string) error {
+func (c *Client) Login(profileID string) error {
 	args := make(url.Values)
-	args.Add("provider_id", providerID)
+	args.Add("profile_id", profileID)
 	resp, err := c.httpClient.PostForm(fakeHost+"/login", args)
 	if err != nil {
 		return err
@@ -91,12 +91,12 @@ func (c *Client) Login(providerID string) error {
 	return nil
 }
 
-func (c *Client) AssumeRole(providerID, accountID, roleName, accountName string, timeoutSeconds int) (*sts.Credentials, error) {
+func (c *Client) AssumeRole(providerID, accountID, roleName, accountName string, timeoutSeconds int) (*messages.Credentials, error) {
 	data := make(url.Values)
 	data.Set("account_id", accountID)
 	data.Set("role_name", roleName)
 	data.Set("account_name", accountName)
-	data.Set("provider_id", providerID)
+	data.Set("profile_id", providerID)
 	if timeoutSeconds > 0 {
 		data.Set("timeout_seconds", strconv.Itoa(timeoutSeconds))
 	}
@@ -112,7 +112,7 @@ func (c *Client) AssumeRole(providerID, accountID, roleName, accountName string,
 		return nil, fmt.Errorf("Bad response from server: %d body=<%s>", resp.StatusCode, body)
 	}
 
-	var creds sts.Credentials
+	var creds messages.Credentials
 	err = json.Unmarshal(body, &creds)
 	if err != nil {
 		return nil, fmt.Errorf("Unmarshal json resp err: %s, body: <%s>", err, body)
@@ -121,13 +121,13 @@ func (c *Client) AssumeRole(providerID, accountID, roleName, accountName string,
 	return &creds, nil
 }
 
-func (c *Client) Session(providerID string, timeoutSeconds int) (*sts.Credentials, error) {
+func (c *Client) Session(providerID string, timeoutSeconds int) (*messages.Credentials, error) {
 	data := make(url.Values)
 	if timeoutSeconds > 0 {
 		data.Set("timeout_seconds", strconv.Itoa(timeoutSeconds))
 	}
 
-	data.Set("provider_id", providerID)
+	data.Set("profile_id", providerID)
 
 	resp, err := c.httpClient.PostForm(fakeHost+"/session", data)
 	if err != nil {
@@ -141,7 +141,7 @@ func (c *Client) Session(providerID string, timeoutSeconds int) (*sts.Credential
 		return nil, fmt.Errorf("Bad response from server: %d\n%s\n", resp.StatusCode, body)
 	}
 
-	var creds sts.Credentials
+	var creds messages.Credentials
 	err = json.Unmarshal(body, &creds)
 	if err != nil {
 		return nil, fmt.Errorf("Unmarshal json resp err: %s, body: <%s>", err, body)
