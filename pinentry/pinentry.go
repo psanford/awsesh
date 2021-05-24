@@ -10,25 +10,38 @@ import (
 )
 
 func GetPin(prompt string) (string, error) {
-	p, err := pinentry.Launch()
+	childCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p, cmd, err := launch(childCtx)
 	if err != nil {
-		return "", fmt.Errorf("failed to start pinentry %w", err)
+		return "", fmt.Errorf("failed to start pinentry: %w", err)
 	}
+	defer func() {
+		cancel()
+		cmd.Wait()
+	}()
+
 	defer p.Shutdown()
 	p.SetTitle("AWSesh")
 	p.SetPrompt("AWSesh")
 	p.SetDesc(prompt)
 	pin, err := p.GetPIN()
+
 	return pin, err
 }
 
 func Confirm(ctx context.Context, prompt string) (bool, error) {
 	childCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	p, err := launch(childCtx)
+	p, cmd, err := launch(childCtx)
 	if err != nil {
 		return false, fmt.Errorf("failed to start pinentry: %w", err)
 	}
+	defer func() {
+		cancel()
+		cmd.Wait()
+	}()
+
 	defer p.Shutdown()
 	p.SetTitle("AWSesh")
 	p.SetPrompt("AWSesh")
@@ -49,14 +62,30 @@ func Confirm(ctx context.Context, prompt string) (bool, error) {
 	}
 }
 
-func launch(ctx context.Context) (*pinentry.Client, error) {
+func launch(ctx context.Context) (*pinentry.Client, *exec.Cmd, error) {
 	cmd := exec.CommandContext(ctx, "pinentry")
 
-	var c pinentry.Client
-	var err error
-	c.Session, err = assuan.InitCmd(cmd)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &c, nil
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, nil, err
+	}
+
+	var c pinentry.Client
+	c.Session, err = assuan.Init(assuan.ReadWriteCloser{
+		ReadCloser:  stdout,
+		WriteCloser: stdin,
+	})
+
+	if err != nil {
+		return nil, nil, err
+	}
+	return &c, cmd, nil
 }
