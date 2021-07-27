@@ -119,6 +119,7 @@ func loginAction(cmd *cobra.Command, args []string) {
 var (
 	accountIDF            string
 	roleNameF             string
+	fromEnvF              bool
 	accountNameF          string
 	execCmd               string
 	printEnv              bool
@@ -202,9 +203,7 @@ func webCommand() *cobra.Command {
 
 	cmd.Flags().StringVarP(&accountIDF, "account-id", "", "", "Account ID")
 	cmd.Flags().StringVarP(&roleNameF, "role", "", "", "Role Name")
-	cmd.Flags().StringVarP(&accountNameF, "name", "", "", "Account Name (friendly)")
-	cmd.Flags().BoolVarP(&printEnv, "print", "", false, "Print ENV settings")
-	cmd.Flags().StringVarP(&execCmd, "exec", "", "", "Exec command instead of dropping to shell")
+	cmd.Flags().BoolVarP(&fromEnvF, "from-env", "", false, "Use loaded creds in env")
 	cmd.Flags().IntVarP(&timeoutMinutesRole, "timeout-minutes", "", 60, "Timeout in minutes")
 
 	cmd.ValidArgsFunction = assumeRoleCompletions
@@ -218,6 +217,11 @@ func webAction(cmd *cobra.Command, args []string) {
 		roleName    string
 		accountName string
 	)
+
+	if fromEnvF {
+		webLoginFromEnv(cmd, args)
+		return
+	}
 
 	if accountIDF != "" && roleNameF != "" {
 		accountID = accountIDF
@@ -234,7 +238,7 @@ func webAction(cmd *cobra.Command, args []string) {
 			}
 		}
 	} else {
-		log.Fatalf("usage: assume <account_id|long-account-id> [--account-id <id>, --role <role>, --name <friendly-name>]")
+		log.Fatalf("usage: web-assume=role <account_id|long-account-id> [--account-id <id>, --role <role>]")
 	}
 
 	if accountID == "" || roleName == "" {
@@ -259,6 +263,71 @@ func webAction(cmd *cobra.Command, args []string) {
 		"sessionId":    *creds.AccessKeyId,
 		"sessionKey":   *creds.SecretAccessKey,
 		"sessionToken": *creds.SessionToken,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	loginURLPrefix := "https://signin.aws.amazon.com/federation"
+	req, err := http.NewRequest("GET", loginURLPrefix, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	q := req.URL.Query()
+	q.Add("Action", "getSigninToken")
+	q.Add("Session", string(jsonTxt))
+
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("getSigninToken returned non-200 status: %d", resp.StatusCode)
+	}
+
+	var signinTokenResp struct {
+		SigninToken string `json:"SigninToken"`
+	}
+
+	if err = json.Unmarshal([]byte(body), &signinTokenResp); err != nil {
+		log.Fatalf("parse signinTokenResp err: %s", err)
+	}
+
+	destination := "https://console.aws.amazon.com/"
+
+	loginURL := fmt.Sprintf(
+		"%s?Action=login&Issuer=aws-vault&Destination=%s&SigninToken=%s",
+		loginURLPrefix,
+		url.QueryEscape(destination),
+		url.QueryEscape(signinTokenResp.SigninToken),
+	)
+
+	fmt.Println(loginURL)
+}
+
+func webLoginFromEnv(cmd *cobra.Command, args []string) {
+	accessKeyId := os.Getenv("AWS_ACCESS_KEY_ID")
+	secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+	sessionToken := os.Getenv("AWS_SESSION_TOKEN")
+
+	if accessKeyId == "" || secretAccessKey == "" || sessionToken == "" {
+		log.Fatalf("ENV variables not set")
+	}
+
+	jsonTxt, err := json.Marshal(map[string]string{
+		"sessionId":    accessKeyId,
+		"sessionKey":   secretAccessKey,
+		"sessionToken": sessionToken,
 	})
 	if err != nil {
 		log.Fatal(err)
