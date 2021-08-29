@@ -3,6 +3,7 @@ package pass
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os/exec"
 
 	"github.com/psanford/awsesh/passprovider"
@@ -23,6 +24,7 @@ func (p *pass) AWSCreds() (*passprovider.AwsCreds, error) {
 
 	rawOut, err := cmd.CombinedOutput()
 	if err != nil {
+		fmt.Printf("pass %s err: %s\n", p.path, err)
 		return nil, err
 	}
 
@@ -32,9 +34,14 @@ func (p *pass) AWSCreds() (*passprovider.AwsCreds, error) {
 		return nil, err
 	}
 
-	innerJSON, err := base64.StdEncoding.DecodeString(wrapper.Data)
-	if err != nil {
-		return nil, err
+	var innerJSON []byte
+	if wrapper.Data != "" {
+		innerJSON, err = base64.StdEncoding.DecodeString(wrapper.Data)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		innerJSON = rawOut
 	}
 
 	var vaultCred VaultCred
@@ -46,6 +53,7 @@ func (p *pass) AWSCreds() (*passprovider.AwsCreds, error) {
 	out := passprovider.AwsCreds{
 		AccessKeyID:     vaultCred.AccessKeyID,
 		SecretAccessKey: vaultCred.SecretAccessKey,
+		TPMHandle:       vaultCred.TPMHandle,
 	}
 
 	return &out, nil
@@ -59,4 +67,5 @@ type VaultCredWrapper struct {
 type VaultCred struct {
 	AccessKeyID     string `json:"AccessKeyID"`
 	SecretAccessKey string `json:"SecretAccessKey"`
+	TPMHandle       string `json:"secret-access-key-tpm-handle"`
 }

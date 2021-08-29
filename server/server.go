@@ -3,9 +3,11 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"log"
 	"net"
 	"net/http"
@@ -17,7 +19,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
+	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/google/go-tpm/tpm2"
 	"github.com/psanford/awsesh/client"
 	"github.com/psanford/awsesh/config"
 	"github.com/psanford/awsesh/messages"
@@ -26,12 +30,14 @@ import (
 	"github.com/psanford/awsesh/passprovider"
 	"github.com/psanford/awsesh/pinentry"
 	"github.com/psanford/awsesh/u2f"
+	"github.com/psanford/awsv4signer"
 )
 
 type server struct {
-	creds   map[string]*sts.Credentials
-	handler http.Handler
-	conf    *config.Config
+	creds     map[string]*sts.Credentials
+	handler   http.Handler
+	conf      *config.Config
+	tpmHandle *tpm
 }
 
 func (s *server) ListenAndServe() error {
@@ -160,9 +166,20 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var signer *awsv4signer.Signer
+	if creds.TPMHandle != "" {
+		if s.conf.TPMPath == "" {
+			w.WriteHeader(400)
+			fmt.Fprintf(w, "cred has tpm handle but tpm-path not set in config")
+			return
+		}
+		signer, err = s.tpmSigner(s.conf.TPMPath, creds.AccessKeyID, creds.TPMHandle, "")
+	} else {
+		signer = s.staticKeySigner(creds.AccessKeyID, creds.SecretAccessKey, "")
+	}
+
 	sess, err := session.NewSession(&aws.Config{
-		Region:      aws.String(provider.AWS.Region),
-		Credentials: credentials.NewStaticCredentials(creds.AccessKeyID, creds.SecretAccessKey, ""),
+		Region: aws.String(provider.AWS.Region),
 	})
 	if err != nil {
 		w.WriteHeader(400)
@@ -182,6 +199,9 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	mfaSerial := provider.AWS.MFASerial
 
 	stsService := sts.New(sess)
+	stsService.Handlers.Sign.RemoveByName(v4.SignRequestHandler.Name)
+	stsService.Handlers.Sign.PushBack(signer.SignSDKRequest)
+
 	out, err := stsService.GetSessionToken(&sts.GetSessionTokenInput{
 		DurationSeconds: aws.Int64(60 * 60 * 12),
 		SerialNumber:    &mfaSerial,
@@ -246,9 +266,20 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var signer *awsv4signer.Signer
+	if creds.TPMHandle != "" {
+		if s.conf.TPMPath == "" {
+			w.WriteHeader(400)
+			fmt.Fprintf(w, "cred has tpm handle but tpm-path not set in config")
+			return
+		}
+		signer, err = s.tpmSigner(s.conf.TPMPath, creds.AccessKeyID, creds.TPMHandle, "")
+	} else {
+		signer = s.staticKeySigner(creds.AccessKeyID, creds.SecretAccessKey, "")
+	}
+
 	sess, err := session.NewSession(&aws.Config{
-		Region:      aws.String(provider.AWS.Region),
-		Credentials: credentials.NewStaticCredentials(creds.AccessKeyID, creds.SecretAccessKey, ""),
+		Region: aws.String(provider.AWS.Region),
 	})
 	if err != nil {
 		w.WriteHeader(400)
@@ -265,6 +296,8 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 	mfaSerial := provider.AWS.MFASerial
 
 	stsService := sts.New(sess)
+	stsService.Handlers.Sign.RemoveByName(v4.SignRequestHandler.Name)
+	stsService.Handlers.Sign.PushBack(signer.SignSDKRequest)
 	out, err := stsService.GetSessionToken(&sts.GetSessionTokenInput{
 		DurationSeconds: aws.Int64(int64(timeoutSeconds)),
 		SerialNumber:    &mfaSerial,
@@ -364,6 +397,50 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(result)
+}
+
+func (s server) tpmSigner(tpmPath string, accessKeyID, keyHandleB64, sessionToken string) (*awsv4signer.Signer, error) {
+	if s.tpmHandle == nil {
+		rwc, err := tpm2.OpenTPM(tpmPath)
+		if err != nil {
+			return nil, fmt.Errorf("open tpm err: %w", err)
+		}
+
+		s.tpmHandle = &tpm{
+			tpm: rwc,
+		}
+	}
+
+	ekhBytes, err := base64.URLEncoding.DecodeString(keyHandleB64)
+	if err != nil {
+		return nil, fmt.Errorf("decode tpm key handle err: %w", err)
+	}
+
+	hmacHandle, err := tpm2.ContextLoad(s.tpmHandle.tpm, ekhBytes)
+	if err != nil {
+		return nil, fmt.Errorf("context load err: %w", err)
+	}
+
+	signer := awsv4signer.Signer{
+		AccessKeyID:  accessKeyID,
+		SessionToken: sessionToken,
+		SecretAccessKeyHmacSha256: func() hash.Hash {
+			return &TpmHmac{
+				tpm:    s.tpmHandle,
+				handle: hmacHandle,
+			}
+		},
+	}
+
+	return &signer, nil
+}
+
+func (s server) staticKeySigner(accessKeyID, secretAccessKey, sessionToken string) *awsv4signer.Signer {
+	return &awsv4signer.Signer{
+		AccessKeyID:               accessKeyID,
+		SessionToken:              sessionToken,
+		SecretAccessKeyHmacSha256: awsv4signer.StaticAccessKeyHmac(secretAccessKey),
+	}
 }
 
 func awsTOTP(ctx context.Context, oathName string) (string, error) {

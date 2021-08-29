@@ -15,6 +15,7 @@ import (
 
 type Config struct {
 	KeyHandle string    `toml:"key-handle"`
+	TPMPath   string    `toml:"tpm-path"`
 	Profile   []Profile `toml:"profile"`
 }
 

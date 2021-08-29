@@ -18,6 +18,7 @@ import (
 	"github.com/psanford/awsesh/config"
 	"github.com/psanford/awsesh/messages"
 	"github.com/psanford/awsesh/server"
+	"github.com/psanford/awsesh/tpmcli"
 	"github.com/psanford/awsesh/u2f"
 	"github.com/spf13/cobra"
 )
@@ -42,6 +43,7 @@ func main() {
 	rootCmd.PersistentFlags().StringVarP(&profileID, "profile", "p", "", "Profile ID to use (defaults to first in config file)")
 
 	rootCmd.AddCommand(u2fRegisterCommand())
+	rootCmd.AddCommand(tpmMakeKeyHandleCommand())
 	rootCmd.AddCommand(debugCommand())
 	rootCmd.AddCommand(listAccountsCommand())
 	rootCmd.AddCommand(loginCommand())
@@ -89,7 +91,28 @@ func u2fRegisterAction(cmd *cobra.Command, args []string) {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("key-handle: %s\n", handle.MarshalKey())
+	fmt.Printf("key-handle:\n%s\n", handle.MarshalKey())
+}
+
+func tpmMakeKeyHandleCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "tpm-make-key-handle",
+		Short: "make a tpm key handle for a SecretAccessKey",
+		Run:   tpmMakeKeyHandleAction,
+	}
+
+	cmd.Flags().StringVarP(&tpmPath, "tpm-path", "", "/dev/tpmrm0", "TPM Path")
+
+	return cmd
+}
+
+func tpmMakeKeyHandleAction(cmd *cobra.Command, args []string) {
+	handleStr, err := tpmcli.MakeKeyHandle(tpmPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("tpm-key-handle: %s\n", handleStr)
 }
 
 func loginCommand() *cobra.Command {
@@ -125,6 +148,7 @@ var (
 	printEnv              bool
 	timeoutMinutesRole    int
 	timeoutMinutesSession int
+	tpmPath               string
 )
 
 func assumeRoleCommand() *cobra.Command {

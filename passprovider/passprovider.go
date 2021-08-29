@@ -7,4 +7,5 @@ type Provider interface {
 type AwsCreds struct {
 	AccessKeyID     string `json:"access_key_id"`
 	SecretAccessKey string `json:"secret_access_key"`
+	TPMHandle       string `json:"tpm-handle"`
 }
