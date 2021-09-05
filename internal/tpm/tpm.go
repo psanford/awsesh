@@ -115,21 +115,21 @@ func (t *Dev) HmacMsg(handle tpmutil.Handle, msg []byte) ([]byte, error) {
 	seqAuth := ""
 	seq, err := t.hmacStart(seqAuth, handle, tpm2.AlgSHA256)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("hmac start err: %w", err)
 	}
 	defer tpm2.FlushContext(t.tpm, seq)
 
 	maxDigestBuffer := 1024
 	for len(msg) > maxDigestBuffer {
 		if err = tpm2.SequenceUpdate(t.tpm, seqAuth, seq, msg[:maxDigestBuffer]); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("sequenceupdate err: %w", err)
 		}
 		msg = msg[maxDigestBuffer:]
 	}
 
 	digest, _, err := tpm2.SequenceComplete(t.tpm, seqAuth, seq, tpm2.HandleNull, msg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sequencecomplete err: %w", err)
 	}
 
 	return digest, nil
@@ -232,9 +232,15 @@ func Open(tpmPath string) (*Dev, error) {
 
 }
 
-func (d *Dev) CreateKeyHandle(secretKey []byte) (string, error) {
+func (d *Dev) createPrimary() (tpmutil.Handle, error) {
+	pcrList := []int{}
+	pcrSelection := tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: pcrList}
+	pkh, _, err := tpm2.CreatePrimary(d.tpm, tpm2.HandleOwner, pcrSelection, emptyPassword, emptyPassword, primaryKeyParams)
+	return pkh, err
+}
 
-	pkh, _, err := tpm2.CreatePrimary(d.tpm, tpm2.HandleOwner, tpm2.PCRSelection{}, emptyPassword, emptyPassword, primaryKeyParams)
+func (d *Dev) CreateKeyHandle(secretKey []byte) (string, error) {
+	pkh, err := d.createPrimary()
 	if err != nil {
 		return "", fmt.Errorf("CreatePrimary err: %w", err)
 	}
@@ -282,17 +288,15 @@ func (d *Dev) LoadHMACKey(keyHandleB64 string) (func() hash.Hash, error) {
 		return nil, fmt.Errorf("unmarshal tpm-handle err: %w", err)
 	}
 
-	pkh, _, err := tpm2.CreatePrimary(d.tpm, tpm2.HandleOwner, tpm2.PCRSelection{}, emptyPassword, emptyPassword, primaryKeyParams)
+	pkh, err := d.createPrimary()
 	if err != nil {
 		return nil, fmt.Errorf("CreatePrimary err: %w", err)
 	}
-	defer tpm2.FlushContext(d.tpm, pkh)
 
 	hmacHandle, _, err := tpm2.Load(d.tpm, pkh, emptyPassword, k.Pub, k.Priv)
 	if err != nil {
 		return nil, fmt.Errorf("load hash key err: %w", err)
 	}
-	defer tpm2.FlushContext(d.tpm, hmacHandle)
 
 	newHashFunc := func() hash.Hash {
 		return &Hmac{
