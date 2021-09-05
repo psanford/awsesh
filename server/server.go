@@ -3,11 +3,9 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash"
 	"log"
 	"net"
 	"net/http"
@@ -21,15 +19,14 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/aws/aws-sdk-go/service/sts"
-	"github.com/google/go-tpm/tpm2"
 	"github.com/psanford/awsesh/client"
 	"github.com/psanford/awsesh/config"
+	"github.com/psanford/awsesh/internal/tpm"
 	"github.com/psanford/awsesh/messages"
 	"github.com/psanford/awsesh/onepassword"
 	"github.com/psanford/awsesh/pass"
 	"github.com/psanford/awsesh/passprovider"
 	"github.com/psanford/awsesh/pinentry"
-	"github.com/psanford/awsesh/tpm"
 	"github.com/psanford/awsesh/u2f"
 	"github.com/psanford/awsv4signer"
 )
@@ -38,7 +35,7 @@ type server struct {
 	creds     map[string]*sts.Credentials
 	handler   http.Handler
 	conf      *config.Config
-	tpmHandle *tpmDev
+	tpmHandle *tpm.Dev
 }
 
 func (s *server) ListenAndServe() error {
@@ -409,52 +406,27 @@ func (s *server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 
 func (s server) tpmSigner(tpmPath string, accessKeyID, keyHandleB64, sessionToken string) (*awsv4signer.Signer, error) {
 	if s.tpmHandle == nil {
-		rwc, err := tpm2.OpenTPM(tpmPath)
+		h, err := tpm.Open(tpmPath)
 		if err != nil {
-			return nil, fmt.Errorf("open tpm err: %w", err)
+			return nil, err
 		}
 
-		s.tpmHandle = &tpmDev{
-			tpm: rwc,
-		}
+		s.tpmHandle = h
 	}
 
 	if accessKeyID == "" {
 		return nil, fmt.Errorf("accessKeyID cannot be empty")
 	}
 
-	pkh, _, err := tpm2.CreatePrimary(s.tpmHandle.tpm, tpm2.HandleOwner, tpm2.PCRSelection{}, emptyPassword, emptyPassword, tpm.PrimaryKeyParams)
+	hmacFunc, err := s.tpmHandle.LoadHMACKey(keyHandleB64)
 	if err != nil {
-		return nil, fmt.Errorf("CreatePrimary err: %w", err)
+		return nil, err
 	}
-	defer tpm2.FlushContext(s.tpmHandle.tpm, pkh)
-
-	khBytes, err := base64.URLEncoding.DecodeString(keyHandleB64)
-	if err != nil {
-		return nil, fmt.Errorf("decode tpm key handle err: %w", err)
-	}
-
-	var k tpm.Key
-	err = json.Unmarshal(khBytes, &k)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal tpm-handle err: %w", err)
-	}
-
-	hmacHandle, _, err := tpm2.Load(s.tpmHandle.tpm, pkh, emptyPassword, k.Pub, k.Priv)
-	if err != nil {
-		return nil, fmt.Errorf("load hash key err: %w", err)
-	}
-	defer tpm2.FlushContext(s.tpmHandle.tpm, hmacHandle)
 
 	signer := awsv4signer.Signer{
-		AccessKeyID:  accessKeyID,
-		SessionToken: sessionToken,
-		SecretAccessKeyHmacSha256: func() hash.Hash {
-			return &TpmHmac{
-				tpm:    s.tpmHandle,
-				handle: hmacHandle,
-			}
-		},
+		AccessKeyID:               accessKeyID,
+		SessionToken:              sessionToken,
+		SecretAccessKeyHmacSha256: hmacFunc,
 	}
 
 	return &signer, nil

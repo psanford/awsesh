@@ -16,9 +16,9 @@ import (
 
 	"github.com/psanford/awsesh/client"
 	"github.com/psanford/awsesh/config"
+	"github.com/psanford/awsesh/internal/tpm"
 	"github.com/psanford/awsesh/messages"
 	"github.com/psanford/awsesh/server"
-	"github.com/psanford/awsesh/tpmcli"
 	"github.com/psanford/awsesh/u2f"
 	"github.com/spf13/cobra"
 )
@@ -107,7 +107,7 @@ func tpmMakeKeyHandleCommand() *cobra.Command {
 }
 
 func tpmMakeKeyHandleAction(cmd *cobra.Command, args []string) {
-	handleStr, err := tpmcli.MakeKeyHandle(tpmPath)
+	handleStr, err := tpm.MakeKeyHandle(tpmPath)
 	if err != nil {
 		log.Fatal(err)
 	}
