@@ -3,7 +3,6 @@ package pass
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"os/exec"
 
 	"github.com/psanford/awsesh/passprovider"
@@ -24,7 +23,6 @@ func (p *pass) AWSCreds() (*passprovider.AwsCreds, error) {
 
 	rawOut, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Printf("pass %s err: %s\n", p.path, err)
 		return nil, err
 	}
 

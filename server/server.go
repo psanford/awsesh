@@ -29,6 +29,7 @@ import (
 	"github.com/psanford/awsesh/pass"
 	"github.com/psanford/awsesh/passprovider"
 	"github.com/psanford/awsesh/pinentry"
+	"github.com/psanford/awsesh/tpm"
 	"github.com/psanford/awsesh/u2f"
 	"github.com/psanford/awsv4signer"
 )
@@ -37,7 +38,7 @@ type server struct {
 	creds     map[string]*sts.Credentials
 	handler   http.Handler
 	conf      *config.Config
-	tpmHandle *tpm
+	tpmHandle *tpmDev
 }
 
 func (s *server) ListenAndServe() error {
@@ -173,7 +174,14 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "cred has tpm handle but tpm-path not set in config")
 			return
 		}
+
 		signer, err = s.tpmSigner(s.conf.TPMPath, creds.AccessKeyID, creds.TPMHandle, "")
+		if err != nil {
+			w.WriteHeader(400)
+			fmt.Fprintf(w, "tpmSigner err: %s", err)
+			return
+
+		}
 	} else {
 		signer = s.staticKeySigner(creds.AccessKeyID, creds.SecretAccessKey, "")
 	}
@@ -406,20 +414,37 @@ func (s server) tpmSigner(tpmPath string, accessKeyID, keyHandleB64, sessionToke
 			return nil, fmt.Errorf("open tpm err: %w", err)
 		}
 
-		s.tpmHandle = &tpm{
+		s.tpmHandle = &tpmDev{
 			tpm: rwc,
 		}
 	}
 
-	ekhBytes, err := base64.URLEncoding.DecodeString(keyHandleB64)
+	if accessKeyID == "" {
+		return nil, fmt.Errorf("accessKeyID cannot be empty")
+	}
+
+	pkh, _, err := tpm2.CreatePrimary(s.tpmHandle.tpm, tpm2.HandleOwner, tpm2.PCRSelection{}, emptyPassword, emptyPassword, tpm.PrimaryKeyParams)
+	if err != nil {
+		return nil, fmt.Errorf("CreatePrimary err: %w", err)
+	}
+	defer tpm2.FlushContext(s.tpmHandle.tpm, pkh)
+
+	khBytes, err := base64.URLEncoding.DecodeString(keyHandleB64)
 	if err != nil {
 		return nil, fmt.Errorf("decode tpm key handle err: %w", err)
 	}
 
-	hmacHandle, err := tpm2.ContextLoad(s.tpmHandle.tpm, ekhBytes)
+	var k tpm.Key
+	err = json.Unmarshal(khBytes, &k)
 	if err != nil {
-		return nil, fmt.Errorf("context load err: %w", err)
+		return nil, fmt.Errorf("unmarshal tpm-handle err: %w", err)
 	}
+
+	hmacHandle, _, err := tpm2.Load(s.tpmHandle.tpm, pkh, emptyPassword, k.Pub, k.Priv)
+	if err != nil {
+		return nil, fmt.Errorf("load hash key err: %w", err)
+	}
+	defer tpm2.FlushContext(s.tpmHandle.tpm, hmacHandle)
 
 	signer := awsv4signer.Signer{
 		AccessKeyID:  accessKeyID,

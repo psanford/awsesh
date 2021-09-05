@@ -96,8 +96,8 @@ func u2fRegisterAction(cmd *cobra.Command, args []string) {
 
 func tpmMakeKeyHandleCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "tpm-make-key-handle",
-		Short: "make a tpm key handle for a SecretAccessKey",
+		Use:   "tpm-make-encrypted-key",
+		Short: "make an encrypte tpm key for SecretAccessKey",
 		Run:   tpmMakeKeyHandleAction,
 	}
 
@@ -112,7 +112,7 @@ func tpmMakeKeyHandleAction(cmd *cobra.Command, args []string) {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("tpm-key-handle: %s\n", handleStr)
+	fmt.Printf("tpm-encrypted-key: %s\n", handleStr)
 }
 
 func loginCommand() *cobra.Command {

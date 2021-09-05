@@ -18,7 +18,7 @@ const (
 )
 
 type TpmHmac struct {
-	tpm    *tpm
+	tpm    *tpmDev
 	handle tpmutil.Handle
 	buf    bytes.Buffer
 }
@@ -51,12 +51,12 @@ func (h *TpmHmac) Reset() {
 	h.buf.Reset()
 }
 
-type tpm struct {
+type tpmDev struct {
 	mu  sync.Mutex
 	tpm io.ReadWriteCloser
 }
 
-func (t *tpm) HmacMsg(handle tpmutil.Handle, msg []byte) ([]byte, error) {
+func (t *tpmDev) HmacMsg(handle tpmutil.Handle, msg []byte) ([]byte, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -83,7 +83,7 @@ func (t *tpm) HmacMsg(handle tpmutil.Handle, msg []byte) ([]byte, error) {
 	return digest, nil
 }
 
-func (t *tpm) hmacStart(sequenceAuth string, handle tpmutil.Handle, hashAlg tpm2.Algorithm) (seqHandle tpmutil.Handle, err error) {
+func (t *tpmDev) hmacStart(sequenceAuth string, handle tpmutil.Handle, hashAlg tpm2.Algorithm) (seqHandle tpmutil.Handle, err error) {
 
 	auth, err := encodeAuthArea(tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession, Auth: []byte(sequenceAuth)})
 	if err != nil {

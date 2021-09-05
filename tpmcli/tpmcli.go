@@ -3,6 +3,7 @@ package tpmcli
 import (
 	"bufio"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/go-tpm-tools/client"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+	"github.com/psanford/awsesh/tpm"
 )
 
 func MakeKeyHandle(tpmPath string) (string, error) {
@@ -41,7 +43,7 @@ func MakeKeyHandle(tpmPath string) (string, error) {
 		}
 	}
 
-	pkh, _, err := tpm2.CreatePrimary(rwc, tpm2.HandleOwner, tpm2.PCRSelection{}, emptyPassword, emptyPassword, primaryKeyParams)
+	pkh, _, err := tpm2.CreatePrimary(rwc, tpm2.HandleOwner, tpm2.PCRSelection{}, emptyPassword, emptyPassword, tpm.PrimaryKeyParams)
 	if err != nil {
 		return "", fmt.Errorf("CreatePrimary err: %w", err)
 	}
@@ -62,37 +64,21 @@ func MakeKeyHandle(tpmPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("CreateKeyWithSensitive err: %w", err)
 	}
-	newHandle, _, err := tpm2.Load(rwc, pkh, emptyPassword, pubArea, privInternal)
-	if err != nil {
-		return "", fmt.Errorf("load hash key err: %w", err)
-	}
-	defer tpm2.FlushContext(rwc, newHandle)
 
-	ekhBytes, err := tpm2.ContextSave(rwc, newHandle)
-	if err != nil {
-		return "", fmt.Errorf("ContextSave err: %w", err)
+	k := tpm.Key{
+		Pub:  pubArea,
+		Priv: privInternal,
 	}
 
-	return base64.URLEncoding.EncodeToString(ekhBytes), nil
+	jk, err := json.Marshal(k)
+	if err != nil {
+		return "", fmt.Errorf("marshal json err: %w", err)
+	}
+
+	// This double base64 encodes most of this payload, which is silly. I still think this is better than
+	// having json in json from a usability perspective.
+	return base64.URLEncoding.EncodeToString(jk), nil
 }
-
-var (
-	primaryKeyParams = tpm2.Public{
-		Type:    tpm2.AlgECC,
-		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagRestricted | tpm2.FlagDecrypt |
-			tpm2.FlagFixedTPM | tpm2.FlagFixedParent |
-			tpm2.FlagSensitiveDataOrigin | tpm2.FlagUserWithAuth,
-		ECCParameters: &tpm2.ECCParams{
-			Symmetric: &tpm2.SymScheme{
-				Alg:     tpm2.AlgAES,
-				KeyBits: 128,
-				Mode:    tpm2.AlgCFB,
-			},
-			CurveID: tpm2.CurveNISTP256,
-		},
-	}
-)
 
 const (
 	emptyPassword                   = ""
