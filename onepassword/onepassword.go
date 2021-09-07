@@ -100,11 +100,15 @@ func (op *onepass) AWSCreds() (*passprovider.AwsCreds, error) {
 		case "username":
 			creds.AccessKeyID = f.Value
 		case "password":
-			creds.SecretAccessKey = f.Value
+			if len(f.Value) < 100 {
+				creds.SecretAccessKey = f.Value
+			} else {
+				creds.TPMHandle = f.Value
+			}
 		}
 	}
 
-	if creds.AccessKeyID == "" || creds.SecretAccessKey == "" {
+	if creds.AccessKeyID == "" || (creds.SecretAccessKey == "" && creds.TPMHandle == "") {
 		return nil, fmt.Errorf("Failed to find creds in 1password")
 	}
 
