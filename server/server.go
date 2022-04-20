@@ -145,11 +145,13 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	earlyTOTP := provider.Provider == "pass" && provider.AWS.TOTPProvider == "yubikey"
+
 	var totpCode string
-	if provider.Provider == "pass" {
+	if earlyTOTP {
 		// pass+yubikey can messup the totp interface on the yubikey.
 		// do totp first just for this case
-		totpCode, err = awsTOTP(ctx, provider.AWS.OathName)
+		totpCode, err = awsTOTP(ctx, provider.AWS.TOTPProvider, provider.AWS.OathName)
 		if err != nil {
 			w.WriteHeader(400)
 			fmt.Fprintf(w, "TOTP error: %s", err)
@@ -193,7 +195,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if provider.Provider != "pass" {
-		totpCode, err = awsTOTP(ctx, provider.AWS.OathName)
+		totpCode, err = awsTOTP(ctx, provider.AWS.TOTPProvider, provider.AWS.OathName)
 		if err != nil {
 			w.WriteHeader(400)
 			fmt.Fprintf(w, "TOTP error: %s", err)
@@ -292,7 +294,7 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	totpCode, err := awsTOTP(ctx, provider.AWS.OathName)
+	totpCode, err := awsTOTP(ctx, provider.AWS.TOTPProvider, provider.AWS.OathName)
 	if err != nil {
 		w.WriteHeader(400)
 		fmt.Fprintf(w, "TOTP error: %s", err)
@@ -440,10 +442,22 @@ func (s server) staticKeySigner(accessKeyID, secretAccessKey, sessionToken strin
 	}
 }
 
-func awsTOTP(ctx context.Context, oathName string) (string, error) {
+func awsTOTP(ctx context.Context, totpSrc, oathName string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "ykman", "oath", "code", oathName, "-s").CombinedOutput()
+
+	var (
+		out []byte
+		err error
+	)
+	switch totpSrc {
+	case "tpm":
+		out, err = exec.CommandContext(ctx, "tpm-totp", oathName).CombinedOutput()
+	case "yubikey":
+		out, err = exec.CommandContext(ctx, "ykman", "oath", "code", oathName, "-s").CombinedOutput()
+	default:
+		return "", fmt.Errorf("unknown totp-provider: %s", totpSrc)
+	}
 
 	out = bytes.TrimSpace(out)
 
