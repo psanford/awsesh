@@ -194,7 +194,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if provider.Provider != "pass" {
+	if !earlyTOTP {
 		totpCode, err = awsTOTP(ctx, provider.AWS.TOTPProvider, provider.AWS.OathName)
 		if err != nil {
 			w.WriteHeader(400)
@@ -455,6 +455,8 @@ func awsTOTP(ctx context.Context, totpSrc, oathName string) (string, error) {
 		out, err = exec.CommandContext(ctx, "tpm-totp", oathName).CombinedOutput()
 	case "yubikey":
 		out, err = exec.CommandContext(ctx, "ykman", "oath", "accounts", "code", oathName, "-s").CombinedOutput()
+	case "pass":
+		out, err = exec.CommandContext(ctx, "pass", "otp", oathName).CombinedOutput()
 	default:
 		return "", fmt.Errorf("unknown totp-provider: %s", totpSrc)
 	}

@@ -30,7 +30,7 @@ type Profile struct {
 	AWS struct {
 		MFASerial    string `toml:"mfa-serial"`
 		OathName     string `toml:"oath-name"`
-		TOTPProvider string `toml:"totp-provider"` // yubikey|tpm
+		TOTPProvider string `toml:"totp-provider"` // yubikey|tpm|pass
 
 		// AWS Region. If empty string, will default to "us-east-1"
 		Region string `toml:"region"`
@@ -100,8 +100,8 @@ func LoadConfig() Config {
 		if p.AWS.TOTPProvider == "" {
 			p.AWS.TOTPProvider = "yubikey"
 		}
-		if p.AWS.TOTPProvider != "yubikey" && p.AWS.TOTPProvider != "tpm" {
-			panic(fmt.Sprintf("invalid totp-provider: %s, must be 'yubikey', 'tpm', or unset", p.AWS.TOTPProvider))
+		if p.AWS.TOTPProvider != "yubikey" && p.AWS.TOTPProvider != "tpm" && p.AWS.TOTPProvider != "pass" {
+			panic(fmt.Sprintf("invalid totp-provider: %s, must be 'yubikey', 'tpm', 'pass' or unset", p.AWS.TOTPProvider))
 		}
 		conf.Profile[i] = p
 	}
