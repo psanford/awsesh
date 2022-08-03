@@ -428,7 +428,11 @@ func startEnvOrPrint(creds *messages.Credentials, name string) {
 		if execCmd != "" {
 			cmd = exec.Command("/bin/sh", "-c", execCmd)
 		} else {
-			cmd = exec.Command("/bin/bash")
+			shell := os.Getenv("SHELL")
+			if shell == "" {
+				shell = "/usr/bin/env bash"
+			}
+			cmd = exec.Command(shell)
 		}
 		cmd.Env = env
 		cmd.Stdin = os.Stdin
