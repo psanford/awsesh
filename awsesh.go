@@ -16,6 +16,7 @@ import (
 
 	"github.com/psanford/awsesh/client"
 	"github.com/psanford/awsesh/config"
+	"github.com/psanford/awsesh/internal/browser"
 	"github.com/psanford/awsesh/internal/tpm"
 	"github.com/psanford/awsesh/messages"
 	"github.com/psanford/awsesh/server"
@@ -336,7 +337,10 @@ func webAction(cmd *cobra.Command, args []string) {
 		url.QueryEscape(signinTokenResp.SigninToken),
 	)
 
-	fmt.Println(loginURL)
+	ok := browser.Open(loginURL)
+	if !ok {
+		fmt.Println(loginURL)
+	}
 }
 
 func webLoginFromEnv(cmd *cobra.Command, args []string) {
