@@ -452,11 +452,11 @@ func awsTOTP(ctx context.Context, totpSrc, oathName string) (string, error) {
 	)
 	switch totpSrc {
 	case "tpm":
-		out, err = exec.CommandContext(ctx, "tpm-totp", oathName).CombinedOutput()
+		out, err = exec.CommandContext(ctx, "tpm-totp", oathName).Output()
 	case "yubikey":
-		out, err = exec.CommandContext(ctx, "ykman", "oath", "accounts", "code", oathName, "-s").CombinedOutput()
+		out, err = exec.CommandContext(ctx, "ykman", "oath", "accounts", "code", oathName, "-s").Output()
 	case "pass":
-		out, err = exec.CommandContext(ctx, "pass", "otp", oathName).CombinedOutput()
+		out, err = exec.CommandContext(ctx, "pass", "otp", oathName).Output()
 	default:
 		return "", fmt.Errorf("unknown totp-provider: %s", totpSrc)
 	}

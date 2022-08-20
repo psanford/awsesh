@@ -21,7 +21,7 @@ type pass struct {
 func (p *pass) AWSCreds() (*passprovider.AwsCreds, error) {
 	cmd := exec.Command("pass", p.path)
 
-	rawOut, err := cmd.CombinedOutput()
+	rawOut, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
