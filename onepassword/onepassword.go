@@ -80,12 +80,12 @@ func (op *onepass) AWSCreds() (*passprovider.AwsCreds, error) {
 		return nil, fmt.Errorf("failed to find 'op' binary: %w", err)
 	}
 
-	cmd := exec.Command(opPath, "get", "item", "--vault", op.vault, op.item)
+	cmd := exec.Command(opPath, "item", "get", "--format", "json", "--vault", op.vault, op.item)
 	cmd.Env = append(os.Environ(), fmt.Sprintf("OP_SESSION_%s=%s", op.subdomain, op.sessionToken))
 
 	rawOut, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("op item get err: %w, %s", err, rawOut)
 	}
 
 	var obj opObject
@@ -95,8 +95,8 @@ func (op *onepass) AWSCreds() (*passprovider.AwsCreds, error) {
 	}
 
 	var creds passprovider.AwsCreds
-	for _, f := range obj.Details.Fields {
-		switch f.Name {
+	for _, f := range obj.Fields {
+		switch f.ID {
 		case "username":
 			creds.AccessKeyID = f.Value
 		case "password":
@@ -116,30 +116,27 @@ func (op *onepass) AWSCreds() (*passprovider.AwsCreds, error) {
 }
 
 type opObject struct {
-	ChangerUUID string `json:"changerUuid"`
-	CreatedAt   string `json:"createdAt"`
-	Details     struct {
-		Fields []struct {
-			Designation string `json:"designation"`
-			Name        string `json:"name"`
-			Type        string `json:"type"`
-			Value       string `json:"value"`
-		} `json:"fields"`
-		NotesPlain string        `json:"notesPlain"`
-		Sections   []interface{} `json:"sections"`
-	} `json:"details"`
-	ItemVersion int64 `json:"itemVersion"`
-	Overview    struct {
-		URLs  []interface{} `json:"URLs"`
-		Ainfo string        `json:"ainfo"`
-		Ps    int64         `json:"ps"`
-		Tags  []interface{} `json:"tags"`
-		Title string        `json:"title"`
-		URL   string        `json:"url"`
-	} `json:"overview"`
-	TemplateUUID string `json:"templateUuid"`
-	Trashed      string `json:"trashed"`
-	UpdatedAt    string `json:"updatedAt"`
-	UUID         string `json:"uuid"`
-	VaultUUID    string `json:"vaultUuid"`
+	AdditionalInformation string `json:"additional_information"`
+	Category              string `json:"category"`
+	CreatedAt             string `json:"created_at"`
+	Fields                []struct {
+		ID              string `json:"id"`
+		Label           string `json:"label"`
+		PasswordDetails struct {
+			Strength string `json:"strength"`
+		} `json:"password_details"`
+		Purpose   string `json:"purpose"`
+		Reference string `json:"reference"`
+		Type      string `json:"type"`
+		Value     string `json:"value"`
+	} `json:"fields"`
+	ID           string `json:"id"`
+	LastEditedBy string `json:"last_edited_by"`
+	Title        string `json:"title"`
+	UpdatedAt    string `json:"updated_at"`
+	Vault        struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"vault"`
+	Version int64 `json:"version"`
 }
