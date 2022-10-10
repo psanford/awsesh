@@ -98,7 +98,7 @@ func (s *server) confirmUserPresence(ctx context.Context) error {
 	}()
 
 	go func() {
-		err := u2f.VerifyDevice(childCtx, s.conf.KeyHandle)
+		err := u2f.VerifyDevice(childCtx, s.conf.FidoKeyHandles)
 		verifyResult <- err
 	}()
 

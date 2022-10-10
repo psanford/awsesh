@@ -14,9 +14,10 @@ import (
 )
 
 type Config struct {
-	KeyHandle string    `toml:"key-handle"`
-	TPMPath   string    `toml:"tpm-path"`
-	Profile   []Profile `toml:"profile"`
+	DeprecatedKeyHandle string    `toml:"key-handle"`
+	FidoKeyHandles      []string  `toml:"fido-key-handles"`
+	TPMPath             string    `toml:"tpm-path"`
+	Profile             []Profile `toml:"profile"`
 }
 
 type Profile struct {
@@ -86,8 +87,12 @@ func LoadConfig() Config {
 		panic(err)
 	}
 
-	if conf.KeyHandle == "" {
-		panic(fmt.Sprintf("key-handle not set in config file"))
+	if conf.DeprecatedKeyHandle != "" {
+		panic("key-handle is deprecated. Replace with fido-key-handles = [key-handle]")
+	}
+
+	if len(conf.FidoKeyHandles) < 1 {
+		panic(fmt.Sprintf("fido-key-handles not set in config file"))
 	}
 
 	for i, p := range conf.Profile {

@@ -32,7 +32,7 @@ func u2fVerifyCommand() *cobra.Command {
 func u2fVerifyAction(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 	conf := config.LoadConfig()
-	err := u2f.VerifyDevice(ctx, conf.KeyHandle)
+	err := u2f.VerifyDevice(ctx, conf.FidoKeyHandles)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -86,23 +86,40 @@ func RegisterDevice() (*RegisterResponse, error) {
 	return parsed, nil
 }
 
-func VerifyDevice(ctx context.Context, keyHandle string) error {
-	var rr RegisterResponse
-	err := rr.Unmarshal(keyHandle)
+func VerifyDevice(ctx context.Context, candidateKeyHandles []string) error {
+	challenge := make([]byte, 32)
+	_, err := io.ReadFull(rand.Reader, challenge)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	challenge := make([]byte, 32)
-	io.ReadFull(rand.Reader, challenge)
-	req := u2ftoken.AuthenticateRequest{
-		Challenge:   challenge,
-		Application: appIDSha(),
-		KeyHandle:   rr.KeyHandleBytes,
+	var (
+		rr       RegisterResponse
+		req      u2ftoken.AuthenticateRequest
+		token    *u2ftoken.Token
+		tokenErr error
+	)
+	for _, keyHandle := range candidateKeyHandles {
+		err := rr.Unmarshal(keyHandle)
+		if err != nil {
+			return err
+		}
+
+		req = u2ftoken.AuthenticateRequest{
+			Challenge:   challenge,
+			Application: appIDSha(),
+			KeyHandle:   rr.KeyHandleBytes,
+		}
+
+		token, tokenErr = getTokenForKey(req)
+		if tokenErr == nil {
+			break
+		}
 	}
-	t, err := getTokenForKey(req)
-	if err != nil {
-		return err
+
+	if tokenErr != nil {
+		// no matching key found for any key handles
+		return tokenErr
 	}
 
 	done := ctx.Done()
@@ -111,7 +128,7 @@ func VerifyDevice(ctx context.Context, keyHandle string) error {
 	log.Println("authenticating, tap key to continue")
 	var res *u2ftoken.AuthenticateResponse
 	for {
-		res, err = t.Authenticate(req)
+		res, err = token.Authenticate(req)
 		if err == u2ftoken.ErrPresenceRequired {
 			select {
 			case <-done:
@@ -131,7 +148,7 @@ func VerifyDevice(ctx context.Context, keyHandle string) error {
 		return nil
 	}
 
-	return errors.New("invalid signature for key")
+	return errors.New("invalid signature for key(s)")
 }
 
 func getTokenForKey(authReq u2ftoken.AuthenticateRequest) (*u2ftoken.Token, error) {
