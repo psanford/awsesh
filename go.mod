@@ -1,6 +1,6 @@
 module github.com/psanford/awsesh
 
-go 1.16
+go 1.19
 
 require (
 	github.com/BurntSushi/toml v0.3.1
@@ -11,5 +11,11 @@ require (
 	github.com/google/go-tpm v0.3.3-0.20210409082102-d3310770bfec
 	github.com/psanford/awsv4signer v0.0.0-20210829210226-1dd1b1c1d6ce
 	github.com/spf13/cobra v1.1.3
-	golang.org/x/sys v0.0.0-20210423082822-04245dca01da
+	golang.org/x/sys v0.12.0
+)
+
+require (
+	github.com/inconshreveable/mousetrap v1.0.0 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/spf13/pflag v1.0.5 // indirect
 )
